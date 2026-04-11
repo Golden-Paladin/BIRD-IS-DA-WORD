@@ -18,21 +18,29 @@ from pt_streaming import LazyPtDataset, collect_classes, scan_pt_split
 MEAN = [0.485, 0.456, 0.406]
 STD = [0.229, 0.224, 0.225]
 
+# Each variant: (factory_fn, weights, params)
+_VARIANTS: dict[str, tuple] = {
+    "b0": (models.efficientnet_b0, models.EfficientNet_B0_Weights.IMAGENET1K_V1),   #  5.3M params
+    "b1": (models.efficientnet_b1, models.EfficientNet_B1_Weights.IMAGENET1K_V1),   #  7.8M params
+    "b2": (models.efficientnet_b2, models.EfficientNet_B2_Weights.IMAGENET1K_V1),   #  9.1M params  ← default
+    "b3": (models.efficientnet_b3, models.EfficientNet_B3_Weights.IMAGENET1K_V1),   # 12.2M params
+}
+
 
 @dataclass
-class ResNetConfig:
+class EfficientNetConfig:
     pt_data_dir: str = "pt_data"
     output_dir: str = "model_artifacts"
-    checkpoint_name: str = "resnet_bird_classifier.pt"
+    checkpoint_name: str = "efficientnet_bird_classifier.pt"
+    model_variant: str = "b2"           # b0 | b1 | b2 | b3
     image_size: int = 224
     batch_size: int = 4
     epochs: int = 10
     learning_rate: float = 5e-4
-    # 0=all frozen; 1=unfreeze layer4+fc; 2=+layer3; 3=+layer2; 4=all backbone
-    unfreeze_layers: int = 1
-    # backbone unfrozen layers use lr * this multiplier (lower = more careful fine-tuning)
+    # 0=classifier only; 1=unfreeze last feature block; 2=last 2; ... 9=all features
+    unfreeze_layers: int = 2
     backbone_lr_multiplier: float = 0.1
-    lr_scheduler: str = "cosine"   # cosine | step | none
+    lr_scheduler: str = "cosine"        # cosine | step | none
     label_smoothing: float = 0.1
     weight_decay: float = 1e-4
     dropout: float = 0.3
@@ -49,60 +57,66 @@ def normalize_cli_args(argv: list[str]) -> list[str]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Train or run inference with a ResNet bird classifier.")
+    parser = argparse.ArgumentParser(description="Train or run inference with an EfficientNet bird classifier.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
     p = subparsers.add_parser("train", help="Train from generated .pt files")
     p.add_argument("--pt-data-dir", type=Path, default=Path("pt_data"))
     p.add_argument("--output-dir", type=Path, default=Path("model_artifacts"))
-    p.add_argument("--checkpoint-name", default="resnet_bird_classifier.pt")
+    p.add_argument("--checkpoint-name", default="efficientnet_bird_classifier.pt")
+    p.add_argument(
+        "--model-variant", default="b2", choices=list(_VARIANTS),
+        help="EfficientNet variant: b0 (~5M params), b1 (~8M), b2 (~9M, default), b3 (~12M)",
+    )
     p.add_argument("--image-size", type=int, default=224)
     p.add_argument("--batch-size", type=int, default=4)
     p.add_argument("--epochs", type=int, default=10)
     p.add_argument("--learning-rate", type=float, default=5e-4)
     p.add_argument(
-        "--unfreeze-layers", type=int, default=1,
-        help="ResNet blocks to unfreeze from top (0=all frozen, 1=layer4+fc, 2=+layer3, 3=+layer2, 4=all backbone)",
+        "--unfreeze-layers", type=int, default=2,
+        help="Feature blocks to unfreeze from the top (0=classifier only, 1=last block, 2=last 2, ...)",
     )
-    p.add_argument("--backbone-lr-multiplier", type=float, default=0.1,
-                   help="LR multiplier applied to unfrozen backbone layers (default 0.1 = 10x lower than head)")
+    p.add_argument("--backbone-lr-multiplier", type=float, default=0.1)
     p.add_argument("--lr-scheduler", default="cosine", choices=["cosine", "step", "none"])
     p.add_argument("--label-smoothing", type=float, default=0.1)
     p.add_argument("--weight-decay", type=float, default=1e-4)
-    p.add_argument("--dropout", type=float, default=0.3, help="Dropout rate before final FC layer")
-    p.add_argument("--augment", action=argparse.BooleanOptionalAction, default=True,
-                   help="Enable on-the-fly random augmentation (flip, rotate, erase)")
+    p.add_argument("--dropout", type=float, default=0.3, help="Dropout before the classifier linear layer")
+    p.add_argument("--augment", action=argparse.BooleanOptionalAction, default=True)
     p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick smoke tests")
 
     pred = subparsers.add_parser("predict", help="Predict bird class for one image")
     pred.add_argument("--image-path", type=Path, required=True)
     pred.add_argument(
         "--checkpoint-path", type=Path,
-        default=Path("model_artifacts") / "resnet_bird_classifier.pt",
+        default=Path("model_artifacts") / "efficientnet_bird_classifier.pt",
     )
     pred.add_argument("--image-size", type=int, default=224)
 
     return parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
 
 
-def create_model(num_classes: int, unfreeze_layers: int, dropout: float) -> nn.Module:
-    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+def create_model(num_classes: int, variant: str, unfreeze_layers: int, dropout: float) -> nn.Module:
+    if variant not in _VARIANTS:
+        raise ValueError(f"Unknown variant '{variant}'. Choose from: {list(_VARIANTS)}")
+    model_fn, weights = _VARIANTS[variant]
+    model = model_fn(weights=weights)
 
     # Freeze everything first
     for param in model.parameters():
         param.requires_grad = False
 
-    # Selectively unfreeze the last N residual blocks (counts from layer4 backwards)
-    resnet_layers = [model.layer1, model.layer2, model.layer3, model.layer4]
-    for i in range(min(unfreeze_layers, len(resnet_layers))):
-        for param in resnet_layers[-(i + 1)].parameters():
+    # EfficientNet-Bx has model.features as a Sequential of N blocks.
+    # Unfreeze the last `unfreeze_layers` blocks (counting from the end).
+    feature_blocks = list(model.features.children())
+    for i in range(min(unfreeze_layers, len(feature_blocks))):
+        for param in feature_blocks[-(i + 1)].parameters():
             param.requires_grad = True
 
-    # Replace FC head with Dropout + Linear (always trainable as new params)
-    num_features = model.fc.in_features
-    model.fc = nn.Sequential(
-        nn.Dropout(p=dropout),
-        nn.Linear(num_features, num_classes),
+    # Replace classifier head (always trainable)
+    in_features = model.classifier[-1].in_features
+    model.classifier = nn.Sequential(
+        nn.Dropout(p=dropout, inplace=True),
+        nn.Linear(in_features, num_classes),
     )
     return model
 
@@ -117,10 +131,11 @@ def _build_aug_transform() -> transforms.Compose:
 
 
 def run_train(args: argparse.Namespace) -> None:
-    cfg = ResNetConfig(
+    cfg = EfficientNetConfig(
         pt_data_dir=str(args.pt_data_dir),
         output_dir=str(args.output_dir),
         checkpoint_name=args.checkpoint_name,
+        model_variant=args.model_variant,
         image_size=args.image_size,
         batch_size=args.batch_size,
         epochs=args.epochs,
@@ -154,11 +169,17 @@ def run_train(args: argparse.Namespace) -> None:
     test_loader = DataLoader(test_dataset, batch_size=cfg.batch_size, shuffle=False)
 
     print(
-        f"ResNet-50 | {len(train_records)} train files / {len(test_records)} test files / "
+        f"EfficientNet-{cfg.model_variant.upper()} | "
+        f"{len(train_records)} train files / {len(test_records)} test files / "
         f"{len(classes)} classes | train={len(train_dataset)} test={len(test_dataset)}"
     )
 
-    model = create_model(num_classes=len(classes), unfreeze_layers=cfg.unfreeze_layers, dropout=cfg.dropout)
+    model = create_model(
+        num_classes=len(classes),
+        variant=cfg.model_variant,
+        unfreeze_layers=cfg.unfreeze_layers,
+        dropout=cfg.dropout,
+    )
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model = model.to(device)
 
@@ -168,9 +189,15 @@ def run_train(args: argparse.Namespace) -> None:
 
     criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing)
 
-    # Differential learning rates: backbone gets a much smaller lr to avoid forgetting
-    backbone_params = [p for n, p in model.named_parameters() if p.requires_grad and not n.startswith("fc")]
-    head_params = [p for n, p in model.named_parameters() if p.requires_grad and n.startswith("fc")]
+    # Differential learning rates: backbone much lower than new head
+    backbone_params = [
+        p for n, p in model.named_parameters()
+        if p.requires_grad and not n.startswith("classifier")
+    ]
+    head_params = [
+        p for n, p in model.named_parameters()
+        if p.requires_grad and n.startswith("classifier")
+    ]
     param_groups: list[dict] = []
     if backbone_params:
         param_groups.append({"params": backbone_params, "lr": cfg.learning_rate * cfg.backbone_lr_multiplier})
@@ -186,6 +213,7 @@ def run_train(args: argparse.Namespace) -> None:
 
     best_acc = 0.0
     best_checkpoint_path = out_dir / f"best_{cfg.checkpoint_name}"
+    model_name = f"efficientnet_{cfg.model_variant}"
 
     for epoch in range(cfg.epochs):
         model.train()
@@ -220,7 +248,7 @@ def run_train(args: argparse.Namespace) -> None:
         if accuracy > best_acc:
             best_acc = accuracy
             torch.save(
-                {"model_state_dict": model.state_dict(), "classes": classes, "config": asdict(cfg), "model_name": "resnet50"},
+                {"model_state_dict": model.state_dict(), "classes": classes, "config": asdict(cfg), "model_name": model_name},
                 best_checkpoint_path,
             )
 
@@ -231,10 +259,10 @@ def run_train(args: argparse.Namespace) -> None:
 
     checkpoint_path = out_dir / cfg.checkpoint_name
     torch.save(
-        {"model_state_dict": model.state_dict(), "classes": classes, "config": asdict(cfg), "model_name": "resnet50"},
+        {"model_state_dict": model.state_dict(), "classes": classes, "config": asdict(cfg), "model_name": model_name},
         checkpoint_path,
     )
-    config_path = out_dir / "resnet_config.json"
+    config_path = out_dir / "efficientnet_config.json"
     config_path.write_text(json.dumps(asdict(cfg), indent=2), encoding="utf-8")
     print(f"\nBest val_acc: {best_acc:.4f}  →  {best_checkpoint_path}")
     print(f"Final checkpoint: {checkpoint_path}")
@@ -245,9 +273,10 @@ def run_predict(args: argparse.Namespace) -> None:
     checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
     classes: list[str] = checkpoint["classes"]
     cfg_dict = checkpoint.get("config", {})
+    variant = str(cfg_dict.get("model_variant", "b2"))
     dropout = float(cfg_dict.get("dropout", 0.3))
 
-    model = create_model(num_classes=len(classes), unfreeze_layers=0, dropout=dropout)
+    model = create_model(num_classes=len(classes), variant=variant, unfreeze_layers=0, dropout=dropout)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
