@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from bisect import bisect_right
+from collections.abc import Callable
 from dataclasses import dataclass
 from pathlib import Path
 
@@ -56,12 +57,18 @@ def collect_classes(*record_groups: list[PtFileRecord]) -> list[str]:
 
 
 class LazyPtDataset(Dataset[tuple[torch.Tensor, int]]):
-    def __init__(self, records: list[PtFileRecord], class_to_idx: dict[str, int]) -> None:
+    def __init__(
+        self,
+        records: list[PtFileRecord],
+        class_to_idx: dict[str, int],
+        transform: Callable[[torch.Tensor], torch.Tensor] | None = None,
+    ) -> None:
         if not records:
             raise ValueError("records cannot be empty")
 
         self.records = records
         self.class_to_idx = class_to_idx
+        self.transform = transform
         self._cumulative_sizes: list[int] = []
 
         running_total = 0
@@ -97,5 +104,7 @@ class LazyPtDataset(Dataset[tuple[torch.Tensor, int]]):
         sample_idx = index - previous_total
 
         x_tensor = self._load_tensor(record.path)[sample_idx]
+        if self.transform is not None:
+            x_tensor = self.transform(x_tensor)
         y_tensor = self.class_to_idx[record.class_name]
         return x_tensor, y_tensor
