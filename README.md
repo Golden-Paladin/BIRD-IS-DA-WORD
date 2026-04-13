@@ -162,18 +162,63 @@ After training, `model_artifacts/` contains:
 
 | File | Description |
 |------|-------------|
-| `resnet_bird_classifier.pt` | Final epoch weights |
-| `best_resnet_bird_classifier.pt` | **Best val-accuracy epoch** — use this for prediction |
+| `resnet_bird_classifier_u2_ep15_bs8_img224.pt` | Final epoch checkpoint (`u`=unfreeze layers) |
+| `best_resnet_bird_classifier_u2_ep15_bs8_img224.pt` | **Best val-accuracy epoch** — use this for prediction |
 | `resnet_config.json` | Full config snapshot |
 | (same pattern for vgg, efficientnet, yolo) | |
+
+`model_artifacts/` is the folder that stores your trained model files. A `.pt` file is a PyTorch checkpoint. In this project, it includes:
+- model weights (`model_state_dict`)
+- class names (`classes`)
+- training config (`config`)
+
+So yes, the `.pt` file is the working model output you use for bird prediction.
+
+### Use your trained `.pt` model for bird prediction
+
+```powershell
+# Use the best checkpoint from training
+python .\resnet_model.py predict --checkpoint-path ".\model_artifacts\best_resnet_bird_classifier_u2_ep15_bs8_img224.pt" --image-path "C:\path\to\bird.jpg"
+```
+
+You should see:
+- predicted bird class
+- confidence score
 
 ---
 
 ## Memory tips
 
 - Training streams one `.pt` file at a time — the whole dataset is never concatenated into RAM
-- Lower `--batch-size` first if you hit OOM errors (`1` or `2` always fits)
+- Lower `--batch-size` first if you hit OOM errors (`1` or `2` usually fits)
 - EfficientNet-B0 (`--model-variant b0`) is the lightest backbone option
 - `--unfreeze-layers 0` trains only the new head — very low memory, surprisingly decent accuracy
 - Avoid `BirdTrain.py --prepare-training` on large datasets — it loads everything into RAM at once
 - `224×224` default is safe; `--image-size 2024` multiplies RAM and VRAM usage sharply
+
+Most important memory knobs (highest impact first):
+1. `--image-size`
+2. `--batch-size`
+3. model family/variant (`resnet` vs `efficientnet b0/b1/b2/...`)
+4. `--unfreeze-layers`
+5. dataloader worker count (if you later add `num_workers`)
+
+---
+
+## FAQ
+
+**Q: What is `model_artifacts/`?**  
+A: It is your trained-model output folder: checkpoints (`.pt`) plus config JSON.
+
+**Q: Can I really use a `.pt` file directly?**  
+A: Yes. Run `predict` with `--checkpoint-path` and `--image-path`; the script rebuilds the network and loads the checkpoint weights.
+
+**Q: Which checkpoint should I use?**  
+A: Use the `best_*.pt` checkpoint for inference because it is saved from the epoch with best validation accuracy.
+
+**Q: What about the `torch.load` `FutureWarning`?**  
+A: The loaders now explicitly set `weights_only=False` (with backward-compatible fallback). This removes the warning and makes behavior explicit for current/future torch versions.
+
+**Q: How do I get faster training without crashing memory?**  
+A: Start with `--image-size 224 --batch-size 4`, then increase `batch-size` gradually. If memory is tight, lower `image-size` or use EfficientNet-B0.
+

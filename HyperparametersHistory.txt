@@ -1,0 +1,93 @@
+python .\efficientnet_model.py train --unfreeze-layers 1 --epochs 10 --batch-size 128 --learning-rate 8e-3
+Epoch 1/10 - loss: 3.7298 - val_acc: 0.4819 [best: 0.4819]
+Epoch 2/10 - loss: 2.5208 - val_acc: 0.5004 [best: 0.5004]
+Epoch 3/10 - loss: 2.2643 - val_acc: 0.5093 [best: 0.5093]
+Epoch 4/10 - loss: 2.0785 - val_acc: 0.5274 [best: 0.5274]
+
+
+python .\efficientnet_model.py train --unfreeze-layers 5 --epochs 15 --batch-size 128
+Epoch 1/15 - loss: 4.8062 - val_acc: 0.3778 [best: 0.3778]
+Epoch 2/15 - loss: 3.2392 - val_acc: 0.5741 [best: 0.5741]
+Epoch 3/15 - loss: 2.4436 - val_acc: 0.6559 [best: 0.6559]
+Epoch 4/15 - loss: 2.0887 - val_acc: 0.6955 [best: 0.6955]
+Epoch 5/15 - loss: 1.8980 - val_acc: 0.7224 [best: 0.7224]
+Epoch 6/15 - loss: 1.7683 - val_acc: 0.7304 [best: 0.7304]
+Epoch 7/15 - loss: 1.6858 - val_acc: 0.7473 [best: 0.7473]
+Epoch 8/15 - loss: 1.6229 - val_acc: 0.7481 [best: 0.7481]
+Epoch 9/15 - loss: 1.5591 - val_acc: 0.7565 [best: 0.7565]
+Epoch 10/15 - loss: 1.5298 - val_acc: 0.7565 [best: 0.7565]
+Epoch 11/15 - loss: 1.5060 - val_acc: 0.7578 [best: 0.7578]
+Epoch 12/15 - loss: 1.4802 - val_acc: 0.7591 [best: 0.7591]
+Epoch 13/15 - loss: 1.4769 - val_acc: 0.7612 [best: 0.7612]
+Epoch 14/15 - loss: 1.4602 - val_acc: 0.7591 [best: 0.7612]
+Epoch 15/15 - loss: 1.4679 - val_acc: 0.7578 [best: 0.7612]
+
+
+26GB RAM
+python .\efficientnet_model.py train --unfreeze-layers 10 --epochs 15 --batch-size 128
+Epoch 1/15 - loss: 4.8054 - val_acc: 0.4065 [best: 0.4065]
+Epoch 2/15 - loss: 3.2127 - val_acc: 0.5880 [best: 0.5880]
+Epoch 3/15 - loss: 2.3965 - val_acc: 0.6748 [best: 0.6748]
+Epoch 4/15 - loss: 2.0504 - val_acc: 0.7169 [best: 0.7169]
+Epoch 5/15 - loss: 1.8509 - val_acc: 0.7334 [best: 0.7334]
+Epoch 6/15 - loss: 1.7358 - val_acc: 0.7494 [best: 0.7494]
+Epoch 7/15 - loss: 1.6336 - val_acc: 0.7658 [best: 0.7658]
+
+
+
+27GB RAM
+python .\efficientnet_model.py train --unfreeze-layers 15 --epochs 15 --batch-size 128
+Epoch 1/15 - loss: 4.8087 - val_acc: 0.4103 [best: 0.4103]
+Epoch 2/15 - loss: 3.2109 - val_acc: 0.5969 [best: 0.5969]
+Epoch 3/15 - loss: 2.3965 - val_acc: 0.6740 [best: 0.6740]
+
+
+
+16GB RAM
+python .\efficientnet_model.py train --unfreeze-layers 5 --epochs 15 --batch-size 128 --learning-rate 1e-5
+Epoch 1/15 - loss: 5.3207 - val_acc: 0.0072 [best: 0.0072]
+Epoch 2/15 - loss: 5.3043 - val_acc: 0.0093 [best: 0.0093]
+Epoch 3/15 - loss: 5.2811 - val_acc: 0.0114 [best: 0.0114]
+Epoch 4/15 - loss: 5.2664 - val_acc: 0.0139 [best: 0.0139]
+
+
+cpu running VERY hot, low gpu use
+python .\efficientnet_model.py train --unfreeze-layers 5 --epochs 15 --batch-size 128 --learning-rate 5e-3
+Epoch 1/15 - loss: 3.2034 - val_acc: 0.6639 [best: 0.6639]
+Epoch 2/15 - loss: 1.8133 - val_acc: 0.7342 [best: 0.7342]
+Epoch 3/15 - loss: 1.5059 - val_acc: 0.7574 [best: 0.7574]
+Epoch 4/15 - loss: 1.3474 - val_acc: 0.7574 [best: 0.7574]
+Epoch 5/15 - loss: 1.2517 - val_acc: 0.7704 [best: 0.7704]
+Epoch 6/15 - loss: 1.1789 - val_acc: 0.7881 [best: 0.7881]
+Epoch 7/15 - loss: 1.1273 - val_acc: 0.7936 [best: 0.7936]
+Epoch 8/15 - loss: 1.1052 - val_acc: 0.7987 [best: 0.7987]
+Epoch 9/15 - loss: 1.0745 - val_acc: 0.7999 [best: 0.7999]
+
+
+gpu used much more with higher batches, doubling batch size  
+python .\efficientnet_model.py train --unfreeze-layers 5 --epochs 15 --batch-size 256 --learning-rate 5e-3 
+Epoch 1/15 - loss: 3.3836 - val_acc: 0.6495 [best: 0.6495]
+Epoch 2/15 - loss: 1.8594 - val_acc: 0.7334 [best: 0.7334]
+
+
+to much memory ---- crashed, keep batch amount the same
+python .\efficientnet_model.py train --unfreeze-layers 10 --epochs 15 --batch-size 192 --learning-rate 5e-3 
+
+cpu gpu well-balanced,
+python .\efficientnet_model.py train --unfreeze-layers 10 --epochs 15 --batch-size 128 --learning-rate 5e-3
+Epoch 1/15 - loss: 3.1516 - val_acc: 0.6702 [best: 0.6702]
+Epoch 2/15 - loss: 1.7837 - val_acc: 0.7435 [best: 0.7435]
+Epoch 3/15 - loss: 1.4617 - val_acc: 0.7548 [best: 0.7548]
+Epoch 4/15 - loss: 1.3133 - val_acc: 0.7810 [best: 0.7810]
+Epoch 5/15 - loss: 1.2180 - val_acc: 0.7835 [best: 0.7835]
+Epoch 6/15 - loss: 1.1608 - val_acc: 0.7974 [best: 0.7974]
+Epoch 7/15 - loss: 1.1180 - val_acc: 0.7999 [best: 0.7999]
+
+
+python .\efficientnet_model.py train --unfreeze-layers 15 --epochs 15 --batch-size 128 --learning-rate 5e-3
+
+
+
+
+
+

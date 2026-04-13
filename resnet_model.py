@@ -3,6 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -80,7 +81,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         "--checkpoint-path", type=Path,
         default=Path("model_artifacts") / "resnet_bird_classifier.pt",
     )
-    pred.add_argument("--image-size", type=int, default=224)
+    pred.add_argument("--image-size", type=int, default=None, help="Optional override. Defaults to training image_size from checkpoint.")
 
     return parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
 
@@ -116,6 +117,21 @@ def _build_aug_transform() -> transforms.Compose:
     ])
 
 
+def _safe_torch_load(path: Path) -> dict:
+    # Keep compatibility with both new and older torch versions.
+    try:
+        return torch.load(path, map_location="cpu", weights_only=False)
+    except TypeError:
+        return torch.load(path, map_location="cpu")
+
+
+def _checkpoint_name_with_traits(cfg: ResNetConfig) -> str:
+    src = Path(cfg.checkpoint_name)
+    stem = src.stem
+    suffix = src.suffix or ".pt"
+    return f"{stem}_u{cfg.unfreeze_layers}_ep{cfg.epochs}_bs{cfg.batch_size}_img{cfg.image_size}{suffix}"
+
+
 def run_train(args: argparse.Namespace) -> None:
     cfg = ResNetConfig(
         pt_data_dir=str(args.pt_data_dir),
@@ -138,6 +154,8 @@ def run_train(args: argparse.Namespace) -> None:
     if cfg.image_size <= 0:
         raise ValueError("image-size must be greater than 0")
 
+    cfg.checkpoint_name = _checkpoint_name_with_traits(cfg)
+
     pt_dir = Path(cfg.pt_data_dir)
     out_dir = Path(cfg.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
@@ -156,6 +174,10 @@ def run_train(args: argparse.Namespace) -> None:
     print(
         f"ResNet-50 | {len(train_records)} train files / {len(test_records)} test files / "
         f"{len(classes)} classes | train={len(train_dataset)} test={len(test_dataset)}"
+    )
+    print(
+        f"Config: image_size={cfg.image_size}, batch_size={cfg.batch_size}, "
+        f"unfreeze_layers={cfg.unfreeze_layers}, epochs={cfg.epochs}, lr={cfg.learning_rate}"
     )
 
     model = create_model(num_classes=len(classes), unfreeze_layers=cfg.unfreeze_layers, dropout=cfg.dropout)
@@ -188,8 +210,10 @@ def run_train(args: argparse.Namespace) -> None:
     best_checkpoint_path = out_dir / f"best_{cfg.checkpoint_name}"
 
     for epoch in range(cfg.epochs):
+        epoch_start = time.perf_counter()
         model.train()
         running_loss = 0.0
+        train_start = time.perf_counter()
         for x_batch, y_batch in train_loader:
             x_batch = x_batch.to(device)
             y_batch = y_batch.to(device)
@@ -200,10 +224,12 @@ def run_train(args: argparse.Namespace) -> None:
             loss.backward()
             optimizer.step()
             running_loss += loss.item()
+        train_seconds = time.perf_counter() - train_start
 
         model.eval()
         correct = 0
         total = 0
+        val_start = time.perf_counter()
         with torch.no_grad():
             for x_batch, y_batch in test_loader:
                 x_batch = x_batch.to(device)
@@ -213,6 +239,7 @@ def run_train(args: argparse.Namespace) -> None:
                 preds = model(x_batch).argmax(dim=1)
                 correct += (preds == y_batch).sum().item()
                 total += y_batch.size(0)
+        val_seconds = time.perf_counter() - val_start
 
         avg_loss = running_loss / max(len(train_loader), 1)
         accuracy = correct / max(total, 1)
@@ -227,7 +254,11 @@ def run_train(args: argparse.Namespace) -> None:
         if scheduler is not None:
             scheduler.step()
 
-        print(f"Epoch {epoch + 1}/{cfg.epochs} - loss: {avg_loss:.4f} - val_acc: {accuracy:.4f} [best: {best_acc:.4f}]")
+        epoch_seconds = time.perf_counter() - epoch_start
+        print(
+            f"Epoch {epoch + 1}/{cfg.epochs} - loss: {avg_loss:.4f} - val_acc: {accuracy:.4f} "
+            f"[best: {best_acc:.4f}] - time: train={train_seconds:.1f}s val={val_seconds:.1f}s total={epoch_seconds:.1f}s"
+        )
 
     checkpoint_path = out_dir / cfg.checkpoint_name
     torch.save(
@@ -242,17 +273,18 @@ def run_train(args: argparse.Namespace) -> None:
 
 
 def run_predict(args: argparse.Namespace) -> None:
-    checkpoint = torch.load(args.checkpoint_path, map_location="cpu")
+    checkpoint = _safe_torch_load(args.checkpoint_path)
     classes: list[str] = checkpoint["classes"]
     cfg_dict = checkpoint.get("config", {})
     dropout = float(cfg_dict.get("dropout", 0.3))
+    image_size = int(args.image_size or cfg_dict.get("image_size", 224))
 
     model = create_model(num_classes=len(classes), unfreeze_layers=0, dropout=dropout)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
     transform = transforms.Compose([
-        transforms.Resize((args.image_size, args.image_size)),
+        transforms.Resize((image_size, image_size)),
         transforms.ToTensor(),
         transforms.Normalize(mean=MEAN, std=STD),
     ])

@@ -9,6 +9,14 @@ import torch
 from torch.utils.data import Dataset
 
 
+def _safe_torch_load(path: Path) -> dict:
+    # Keep compatibility with both new and older torch versions.
+    try:
+        return torch.load(path, map_location="cpu", weights_only=False)
+    except TypeError:
+        return torch.load(path, map_location="cpu")
+
+
 @dataclass(frozen=True)
 class PtFileRecord:
     path: Path
@@ -34,7 +42,7 @@ def scan_pt_split(pt_dir: Path, split_name: str, max_files: int | None = None) -
 
     records: list[PtFileRecord] = []
     for file_path in files:
-        payload = torch.load(file_path, map_location="cpu")
+        payload = _safe_torch_load(file_path)
         x_data = payload["X"]
         if x_data.ndim != 4:
             raise ValueError(f"Expected a 4D tensor in {file_path}, but got shape {tuple(x_data.shape)}")
@@ -84,7 +92,7 @@ class LazyPtDataset(Dataset[tuple[torch.Tensor, int]]):
 
     def _load_tensor(self, file_path: Path) -> torch.Tensor:
         if self._cached_path != file_path or self._cached_tensor is None:
-            payload = torch.load(file_path, map_location="cpu")
+            payload = _safe_torch_load(file_path)
             self._cached_tensor = payload["X"].float()
             self._cached_path = file_path
         cached_tensor = self._cached_tensor
