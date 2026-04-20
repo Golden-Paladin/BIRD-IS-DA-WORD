@@ -1,0 +1,153 @@
+python .\efficientnet_model.py train --unfreeze-layers 1 --epochs 10 --batch-size 128 --learning-rate 8e-3
+Epoch 1/10 - loss: 3.7298 - val_acc: 0.4819 [best: 0.4819]
+Epoch 2/10 - loss: 2.5208 - val_acc: 0.5004 [best: 0.5004]
+Epoch 3/10 - loss: 2.2643 - val_acc: 0.5093 [best: 0.5093]
+Epoch 4/10 - loss: 2.0785 - val_acc: 0.5274 [best: 0.5274]
+
+
+python .\efficientnet_model.py train --unfreeze-layers 5 --epochs 15 --batch-size 128
+Epoch 1/15 - loss: 4.8062 - val_acc: 0.3778 [best: 0.3778]
+Epoch 2/15 - loss: 3.2392 - val_acc: 0.5741 [best: 0.5741]
+Epoch 3/15 - loss: 2.4436 - val_acc: 0.6559 [best: 0.6559]
+Epoch 4/15 - loss: 2.0887 - val_acc: 0.6955 [best: 0.6955]
+Epoch 5/15 - loss: 1.8980 - val_acc: 0.7224 [best: 0.7224]
+Epoch 6/15 - loss: 1.7683 - val_acc: 0.7304 [best: 0.7304]
+Epoch 7/15 - loss: 1.6858 - val_acc: 0.7473 [best: 0.7473]
+Epoch 8/15 - loss: 1.6229 - val_acc: 0.7481 [best: 0.7481]
+Epoch 9/15 - loss: 1.5591 - val_acc: 0.7565 [best: 0.7565]
+Epoch 10/15 - loss: 1.5298 - val_acc: 0.7565 [best: 0.7565]
+Epoch 11/15 - loss: 1.5060 - val_acc: 0.7578 [best: 0.7578]
+Epoch 12/15 - loss: 1.4802 - val_acc: 0.7591 [best: 0.7591]
+Epoch 13/15 - loss: 1.4769 - val_acc: 0.7612 [best: 0.7612]
+Epoch 14/15 - loss: 1.4602 - val_acc: 0.7591 [best: 0.7612]
+Epoch 15/15 - loss: 1.4679 - val_acc: 0.7578 [best: 0.7612]
+
+
+26GB RAM
+python .\efficientnet_model.py train --unfreeze-layers 10 --epochs 15 --batch-size 128
+Epoch 1/15 - loss: 4.8054 - val_acc: 0.4065 [best: 0.4065]
+Epoch 2/15 - loss: 3.2127 - val_acc: 0.5880 [best: 0.5880]
+Epoch 3/15 - loss: 2.3965 - val_acc: 0.6748 [best: 0.6748]
+Epoch 4/15 - loss: 2.0504 - val_acc: 0.7169 [best: 0.7169]
+Epoch 5/15 - loss: 1.8509 - val_acc: 0.7334 [best: 0.7334]
+Epoch 6/15 - loss: 1.7358 - val_acc: 0.7494 [best: 0.7494]
+Epoch 7/15 - loss: 1.6336 - val_acc: 0.7658 [best: 0.7658]
+
+
+
+27GB RAM
+python .\efficientnet_model.py train --unfreeze-layers 15 --epochs 15 --batch-size 128
+Epoch 1/15 - loss: 4.8087 - val_acc: 0.4103 [best: 0.4103]
+Epoch 2/15 - loss: 3.2109 - val_acc: 0.5969 [best: 0.5969]
+Epoch 3/15 - loss: 2.3965 - val_acc: 0.6740 [best: 0.6740]
+
+
+
+16GB RAM
+python .\efficientnet_model.py train --unfreeze-layers 5 --epochs 15 --batch-size 128 --learning-rate 1e-5
+Epoch 1/15 - loss: 5.3207 - val_acc: 0.0072 [best: 0.0072]
+Epoch 2/15 - loss: 5.3043 - val_acc: 0.0093 [best: 0.0093]
+Epoch 3/15 - loss: 5.2811 - val_acc: 0.0114 [best: 0.0114]
+Epoch 4/15 - loss: 5.2664 - val_acc: 0.0139 [best: 0.0139]
+
+
+cpu running VERY hot, low gpu use
+python .\efficientnet_model.py train --unfreeze-layers 5 --epochs 15 --batch-size 128 --learning-rate 5e-3
+Epoch 1/15 - loss: 3.2034 - val_acc: 0.6639 [best: 0.6639]
+Epoch 2/15 - loss: 1.8133 - val_acc: 0.7342 [best: 0.7342]
+Epoch 3/15 - loss: 1.5059 - val_acc: 0.7574 [best: 0.7574]
+Epoch 4/15 - loss: 1.3474 - val_acc: 0.7574 [best: 0.7574]
+Epoch 5/15 - loss: 1.2517 - val_acc: 0.7704 [best: 0.7704]
+Epoch 6/15 - loss: 1.1789 - val_acc: 0.7881 [best: 0.7881]
+Epoch 7/15 - loss: 1.1273 - val_acc: 0.7936 [best: 0.7936]
+Epoch 8/15 - loss: 1.1052 - val_acc: 0.7987 [best: 0.7987]
+Epoch 9/15 - loss: 1.0745 - val_acc: 0.7999 [best: 0.7999]
+
+
+gpu used much more with higher batches, doubling batch size  
+python .\efficientnet_model.py train --unfreeze-layers 5 --epochs 15 --batch-size 256 --learning-rate 5e-3 
+Epoch 1/15 - loss: 3.3836 - val_acc: 0.6495 [best: 0.6495]
+Epoch 2/15 - loss: 1.8594 - val_acc: 0.7334 [best: 0.7334]
+
+
+to much memory ---- crashed, keep batch amount the same
+python .\efficientnet_model.py train --unfreeze-layers 10 --epochs 15 --batch-size 192 --learning-rate 5e-3 
+
+cpu gpu well-balanced,
+python .\efficientnet_model.py train --unfreeze-layers 10 --epochs 15 --batch-size 128 --learning-rate 5e-3
+Epoch 1/15 - loss: 3.1516 - val_acc: 0.6702 [best: 0.6702]
+Epoch 2/15 - loss: 1.7837 - val_acc: 0.7435 [best: 0.7435]
+Epoch 3/15 - loss: 1.4617 - val_acc: 0.7548 [best: 0.7548]
+Epoch 4/15 - loss: 1.3133 - val_acc: 0.7810 [best: 0.7810]
+Epoch 5/15 - loss: 1.2180 - val_acc: 0.7835 [best: 0.7835]
+Epoch 6/15 - loss: 1.1608 - val_acc: 0.7974 [best: 0.7974]
+Epoch 7/15 - loss: 1.1180 - val_acc: 0.7999 [best: 0.7999]
+
+
+python .\efficientnet_model.py train --unfreeze-layers 15 --epochs 15 --batch-size 128 --learning-rate 5e-3
+
+
+
+python .\resnet_model.py --unfreeze-layers 10 --epochs 10 --batch-size 32 --learning-rate 5e-4 --dropout .4 --weight-decay 1e-3
+Epoch 1/10 - loss: 3.7643 - val_acc: 0.5762 [best: 0.5762] - time: train=111.2s val=4.2s total=115.5s
+Epoch 2/10 - loss: 2.2142 - val_acc: 0.6904 [best: 0.6904] - time: train=113.9s val=4.2s total=118.2s
+Epoch 3/10 - loss: 1.8501 - val_acc: 0.7350 [best: 0.7350] - time: train=114.6s val=3.8s total=118.5s
+Epoch 4/10 - loss: 1.6366 - val_acc: 0.7430 [best: 0.7430] - time: train=109.9s val=3.9s total=114.0s
+Epoch 5/10 - loss: 1.4868 - val_acc: 0.7671 [best: 0.7671] - time: train=106.7s val=3.8s total=110.7s
+Epoch 6/10 - loss: 1.3939 - val_acc: 0.7923 [best: 0.7923] - time: train=105.9s val=3.8s total=109.8s
+Epoch 7/10 - loss: 1.3164 - val_acc: 0.7906 [best: 0.7923] - time: train=105.7s val=3.8s total=109.5s
+Epoch 8/10 - loss: 1.2579 - val_acc: 0.7965 [best: 0.7965] - time: train=103.0s val=3.8s total=107.0s
+
+
+python .\vgg_model.py --unfreeze-layers 10 --epochs 10 --batch-size 32 --learning-rate 5e-4 --dropout .4 --weight-decay 1e-3
+Epoch 1/10 - loss: 3.9838 - val_acc: 0.4010 [best: 0.4010]
+Epoch 2/10 - loss: 2.7591 - val_acc: 0.5223 [best: 0.5223]
+Epoch 3/10 - loss: 2.2787 - val_acc: 0.6091 [best: 0.6091]
+Epoch 4/10 - loss: 1.9685 - val_acc: 0.6584 [best: 0.6584]
+Epoch 5/10 - loss: 1.7262 - val_acc: 0.6832 [best: 0.6832]
+
+
+python .\resnet_model.py --unfreeze-layers 20 --epochs 10 --batch-size 32 --learning-rate 5e-4 --dropout .4 --weight-decay 1e-3
+Epoch 1/10 - loss: 3.7737 - train_acc: 0.2550 - val_acc: 0.5741 - delta_val_acc: N/A [best: 0.5741] - time: train=107.6s val=3.8s total=111.5s
+Epoch 2/10 - loss: 2.2444 - train_acc: 0.5993 - val_acc: 0.6900 - delta_val_acc: +0.1158 [best: 0.6900] - time: train=107.2s val=4.2s total=111.5s
+Epoch 3/10 - loss: 1.8182 - train_acc: 0.7305 - val_acc: 0.7313 - delta_val_acc: +0.0413 [best: 0.7313] - time: train=108.1s val=4.4s total=112.7s
+Epoch 4/10 - loss: 1.6209 - train_acc: 0.7984 - val_acc: 0.7582 - delta_val_acc: +0.0270 [best: 0.7582] - time: train=110.0s val=4.6s total=114.8s
+Epoch 5/10 - loss: 1.4804 - train_acc: 0.8474 - val_acc: 0.7751 - delta_val_acc: +0.0168 [best: 0.7751] - time: train=111.3s val=4.9s total=116.3s
+Epoch 6/10 - loss: 1.3894 - train_acc: 0.8813 - val_acc: 0.7919 - delta_val_acc: +0.0168 [best: 0.7919] - time: train=111.6s val=5.0s total=116.7s
+Epoch 7/10 - loss: 1.3173 - train_acc: 0.9086 - val_acc: 0.7928 - delta_val_acc: +0.0008 [best: 0.7928] - time: train=112.1s val=4.8s total=117.1s
+
+
+python .\resnet_model.py --unfreeze-layers 50  --epochs 10 --batch-size 32 --learning-rate 5e-4 --dropout .4 --weight-decay 1e-3
+Epoch 1/10 - loss: 3.7536 - train_acc: 0.2589 - val_acc: 0.5653 - delta_val_acc: N/A [best: 0.5653] - time: train=106.9s val=3.8s total=110.7s
+Epoch 2/10 - loss: 2.2147 - train_acc: 0.6114 - val_acc: 0.6933 - delta_val_acc: +0.1281 [best: 0.6933] - time: train=106.5s val=4.4s total=111.1s
+Epoch 3/10 - loss: 1.8372 - train_acc: 0.7298 - val_acc: 0.7275 - delta_val_acc: +0.0341 [best: 0.7275] - time: train=110.1s val=4.5s total=114.7s
+Epoch 4/10 - loss: 1.6370 - train_acc: 0.7952 - val_acc: 0.7565 - delta_val_acc: +0.0291 [best: 0.7565] - time: train=112.2s val=4.9s total=117.3s
+Epoch 5/10 - loss: 1.4901 - train_acc: 0.8487 - val_acc: 0.7671 - delta_val_acc: +0.0105 [best: 0.7671] - time: train=113.1s val=4.9s total=118.1s
+Epoch 6/10 - loss: 1.3967 - train_acc: 0.8786 - val_acc: 0.7755 - delta_val_acc: +0.0084 [best: 0.7755] - time: train=113.5s val=5.1s total=118.7s
+Epoch 7/10 - loss: 1.3106 - train_acc: 0.9115 - val_acc: 0.7974 - delta_val_acc: +0.0219 [best: 0.7974] - time: train=113.6s val=4.9s total=118.7s
+Epoch 8/10 - loss: 1.2776 - train_acc: 0.9213 - val_acc: 0.7919 - delta_val_acc: -0.0055 [best: 0.7974] - time: train=113.5s val=5.0s total=118.5s
+
+testing the adaptive learning rate, .5
+python .\resnet_model.py --unfreeze-layers 20 --epochs 10 --batch-size 32 --learning-rate 5e-4 --dropout .4 --weight-decay 1e-3 --adaptive-lr --adaptive-lr-factor 0.5
+Epoch 1/10 - loss: 3.7715 - train_acc: 0.2473 - val_acc: 0.5746 - delta_val_acc: N/A [best: 0.5746] - time: train=132.0s val=3.9s total=136.2s
+Epoch 2/10 - loss: 2.2109 - train_acc: 0.6053 - val_acc: 0.6912 - delta_val_acc: +0.1167 [best: 0.6912] - time: train=134.6s val=4.0s total=138.8s
+Epoch 3/10 - loss: 1.8370 - train_acc: 0.7309 - val_acc: 0.7355 - delta_val_acc: +0.0442 [best: 0.7355] - time: train=121.2s val=4.6s total=125.9s
+Epoch 4/10 - loss: 1.6322 - train_acc: 0.8010 - val_acc: 0.7498 - delta_val_acc: +0.0143 [best: 0.7498] - time: train=115.0s val=4.6s total=119.8s
+Epoch 5/10 - loss: 1.4900 - train_acc: 0.8461 - val_acc: 0.7666 - delta_val_acc: +0.0168 [best: 0.7666] - time: train=112.8s val=5.0s total=117.9s
+Epoch 6/10 - loss: 1.3980 - train_acc: 0.8798 - val_acc: 0.7881 - delta_val_acc: +0.0215 [best: 0.7881] - time: train=116.2s val=5.0s total=121.4s
+Epoch 7/10 - loss: 1.3174 - train_acc: 0.9051 - val_acc: 0.7919 - delta_val_acc: +0.0038 [best: 0.7919] - time: train=113.6s val=4.1s total=117.8s
+Epoch 8/10 - loss: 1.2545 - train_acc: 0.9259 - val_acc: 0.8054 - delta_val_acc: +0.0135 [best: 0.8054] - time: train=104.4s val=4.2s total=108.7s
+  [adaptive LR] val_acc dropped → LR scaled ×0.5: ['2.39e-06', '2.39e-05']
+Epoch 9/10 - loss: 1.2260 - train_acc: 0.9378 - val_acc: 0.8020 - delta_val_acc: -0.0034 [best: 0.8054] - time: train=109.8s val=4.7s total=114.5s
+Epoch 10/10 - loss: 1.2182 - train_acc: 0.9400 - val_acc: 0.8041 - delta_val_acc: +0.0021 [best: 0.8054] - time: train=111.9s val=4.9s total=116.8s
+Best val_acc: 0.8054  →  model_artifacts\best_resnet_bird_classifier_u20_ep10_bs32_img224.pt
+Final checkpoint: model_artifacts\resnet_bird_classifier_u20_ep10_bs32_img224.pt
+Config: model_artifacts\resnet_config.json
+
+
+
+
+
+
+
+
