@@ -146,8 +146,16 @@ Config: model_artifacts\resnet_config.json
 
 
 
-
-
-
-
-
+python .\efficientnet_model.py train --unfreeze-layers 25 --epochs 10 --weight-decay 1e-3 --dropout .3 --batch-size 32 --learning-rate 1e-2 --adaptive-lr --adaptive-lr-factor 0.5
+Epoch 1/10 - loss: 3.5455 - train_acc: 0.2931 - val_acc: 0.5295 - delta_val_acc: N/A [best: 0.5295] - time: train=111.8s val=3.1s total=115.1s
+Epoch 2/10 - loss: 2.3106 - train_acc: 0.5832 - val_acc: 0.6782 - delta_val_acc: +0.1487 [best: 0.6782] - time: train=113.9s val=3.1s total=117.1s
+Epoch 3/10 - loss: 1.9038 - train_acc: 0.7127 - val_acc: 0.7237 - delta_val_acc: +0.0455 [best: 0.7237] - time: train=115.2s val=3.6s total=118.8s
+Epoch 4/10 - loss: 1.6463 - train_acc: 0.7977 - val_acc: 0.7612 - delta_val_acc: +0.0375 [best: 0.7612] - time: train=119.7s val=3.6s total=123.4s
+Epoch 5/10 - loss: 1.4715 - train_acc: 0.8562 - val_acc: 0.7666 - delta_val_acc: +0.0055 [best: 0.7666] - time: train=121.0s val=3.6s total=124.6s
+Epoch 6/10 - loss: 1.3089 - train_acc: 0.9088 - val_acc: 0.7928 - delta_val_acc: +0.0261 [best: 0.7928] - time: train=118.2s val=4.7s total=122.9s
+Epoch 7/10 - loss: 1.1944 - train_acc: 0.9492 - val_acc: 0.8003 - delta_val_acc: +0.0076 [best: 0.8003] - time: train=120.5s val=6.9s total=127.5s
+Epoch 8/10 - loss: 1.1369 - train_acc: 0.9630 - val_acc: 0.8193 - delta_val_acc: +0.0190 [best: 0.8193] - time: train=121.5s val=6.5s total=128.1s
+Epoch 9/10 - loss: 1.0958 - train_acc: 0.9775 - val_acc: 0.8239 - delta_val_acc: +0.0046 [best: 0.8239] - time: train=124.9s val=3.7s total=128.7s
+Epoch 10/10 - loss: 1.0828 - train_acc: 0.9780 - val_acc: 0.8298 - delta_val_acc: +0.0059 [best: 0.8298] - time: train=118.3s val=3.6s total=121.9s
+Best val_acc: 0.8298  →  model_artifacts\best_efficientnet_bird_classifier.pt
+Final checkpoint: model_artifacts\efficientnet_bird_classifier.pt
