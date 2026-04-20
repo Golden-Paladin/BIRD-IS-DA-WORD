@@ -1,0 +1,18 @@
+{
+  "pt_data_dir": "pt_data",
+  "output_dir": "model_artifacts",
+  "checkpoint_name": "efficientnet_bird_classifier.pt",
+  "model_variant": "b2",
+  "image_size": 224,
+  "batch_size": 128,
+  "epochs": 15,
+  "learning_rate": 0.0005,
+  "unfreeze_layers": 5,
+  "backbone_lr_multiplier": 0.1,
+  "lr_scheduler": "cosine",
+  "label_smoothing": 0.1,
+  "weight_decay": 0.0001,
+  "dropout": 0.3,
+  "augment": true,
+  "max_files": null
+}

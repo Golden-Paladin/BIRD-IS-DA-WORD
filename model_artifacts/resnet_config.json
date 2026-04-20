@@ -1,0 +1,19 @@
+{
+  "pt_data_dir": "pt_data",
+  "output_dir": "model_artifacts",
+  "checkpoint_name": "resnet_bird_classifier_u20_ep10_bs32_img224.pt",
+  "image_size": 224,
+  "batch_size": 32,
+  "epochs": 10,
+  "learning_rate": 0.0005,
+  "unfreeze_layers": 20,
+  "backbone_lr_multiplier": 0.1,
+  "lr_scheduler": "cosine",
+  "label_smoothing": 0.1,
+  "weight_decay": 0.001,
+  "dropout": 0.4,
+  "augment": true,
+  "max_files": null,
+  "adaptive_lr": true,
+  "adaptive_lr_factor": 0.5
+}
