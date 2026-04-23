@@ -120,6 +120,28 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     return parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
 
+class SEBlock(nn.Module):
+    def __init__ (self, channels, r=16):
+        super(SEBlock, self).__init__()
+        # Squeeze Layer to Capture Global Channel
+        # This will be responsible as the 'whole' of the image
+        self.squeeze = nn.AdaptiveAvgPool2d(1)
+        # The excitation will take each small part of the image
+        # and check how much it matters in the context of global
+        self.excitation = nn.Sequential(
+            nn.Linear(channels, channels // r, bias=False),
+            nn.ReLU(inplace=True),
+            nn.Linear(channels // r, channels, bias=False),
+            nn.Sigmoid()
+        )
+    
+    def forward(self, x):
+        b, c, _, _ = x.size()
+        y = self.squeeze(x).view(b, c)
+
+        y = self.excitation(y).view(b, c, 1, 1)
+
+        return x * y.expand_as(x)
 
 def create_model(num_classes: int, unfreeze_layers: int, dropout: float) -> nn.Module:
     """Build a ResNet-50 fine-tuned for bird classification.
@@ -155,6 +177,52 @@ def create_model(num_classes: int, unfreeze_layers: int, dropout: float) -> nn.M
     )
     return model
 
+
+def create_model_with_attention(num_classes: int, unfreeze_layers: int, dropout: float) -> nn.Module:
+    """Build a ResNet-50 fine-tuned for bird classification.
+
+    Strategy:
+    1. Load ImageNet-pretrained ResNet-50.
+    2. Freeze all parameters.
+    3. Unfreeze the last N residual-layer groups for fine-tuning.
+    4. Replace the fully-connected head with Dropout + Linear.
+
+    Args:
+        num_classes:     Number of bird species.
+        unfreeze_layers: 0=all frozen, 1=layer4, 2=layer4+layer3, 3=+layer2, 4=all.
+        dropout:         Dropout probability before the final linear layer.
+    """
+    model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+
+    # Freeze everything first
+    for param in model.parameters():
+        param.requires_grad = False
+
+    # Selectively unfreeze the last N residual blocks (counts from layer4 backwards)
+    resnet_layers = [model.layer1, model.layer2, model.layer3, model.layer4]
+    resnet_layer_sizes = [256, 512, 1024, 2048]
+
+    for s, l in zip(resnet_layer_sizes, resnet_layers):
+        layer_container = getattr(model, l)
+        for i in range(len(layer_container)):
+            original_block = layer_container[i]
+
+            layer_container[i] = nn.Sequential(
+                original_block,
+                SEBlock(channels=s)
+            )
+
+    for i in range(min(unfreeze_layers, len(resnet_layers))):
+        for param in resnet_layers[-(i + 1)].parameters():
+            param.requires_grad = True
+
+    # Replace FC head with Dropout + Linear (always trainable as new params)
+    num_features = model.fc.in_features
+    model.fc = nn.Sequential(
+        nn.Dropout(p=dropout),
+        nn.Linear(num_features, num_classes),
+    )
+    return model
 
 def _build_aug_transform() -> transforms.Compose:
     """Return the augmentation pipeline used during training only.
@@ -251,7 +319,7 @@ def run_train(args: argparse.Namespace) -> None:
         f"unfreeze_layers={cfg.unfreeze_layers}, epochs={cfg.epochs}, lr={cfg.learning_rate}"
     )
 
-    model  = create_model(num_classes=len(classes), unfreeze_layers=cfg.unfreeze_layers, dropout=cfg.dropout)
+    model  = create_model_with_attention(num_classes=len(classes), unfreeze_layers=cfg.unfreeze_layers, dropout=cfg.dropout)
     device = torch.device("cuda" if torch.cuda.is_available() else "cpu")
     model  = model.to(device)
 
@@ -397,7 +465,7 @@ def run_predict(args: argparse.Namespace) -> None:
     image_size = int(args.image_size or cfg_dict.get("image_size", 224))
 
     # Reconstruct model architecture and load saved weights
-    model = create_model(num_classes=len(classes), unfreeze_layers=0, dropout=dropout)
+    model = create_model_with_attention(num_classes=len(classes), unfreeze_layers=0, dropout=dropout)
     model.load_state_dict(checkpoint["model_state_dict"])
     model.eval()
 
