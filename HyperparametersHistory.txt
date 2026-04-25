@@ -159,3 +159,4 @@ Epoch 9/10 - loss: 1.0958 - train_acc: 0.9775 - val_acc: 0.8239 - delta_val_acc:
 Epoch 10/10 - loss: 1.0828 - train_acc: 0.9780 - val_acc: 0.8298 - delta_val_acc: +0.0059 [best: 0.8298] - time: train=118.3s val=3.6s total=121.9s
 Best val_acc: 0.8298  →  model_artifacts\best_efficientnet_bird_classifier.pt
 Final checkpoint: model_artifacts\efficientnet_bird_classifier.pt
+
