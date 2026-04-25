@@ -16,7 +16,6 @@ env/
 .vscode/
 
 # Local data / artifacts
-pt_data/
 model_artifacts/
 yolo_cls_data/
 runs/

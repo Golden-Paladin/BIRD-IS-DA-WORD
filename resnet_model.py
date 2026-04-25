@@ -16,7 +16,7 @@ from torchvision import models, transforms
 
 from pt_streaming import LazyPtDataset, collect_classes, scan_pt_split
 
-# ImageNet normalisation constants — the pretrained backbone expects these.
+# ImageNet normalization constants — the pretrained backbone expects these.
 MEAN = [0.485, 0.456, 0.406]
 STD  = [0.229, 0.224, 0.225]
 
@@ -121,7 +121,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     return parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
 
 class SEBlock(nn.Module):
-    def __init__ (self, channels, r=16):
+    def __init__ (self, channels, r=16, dropout=0.2):
         super(SEBlock, self).__init__()
         # Squeeze Layer to Capture Global Channel
         # This will be responsible as the 'whole' of the image
@@ -131,10 +131,11 @@ class SEBlock(nn.Module):
         self.excitation = nn.Sequential(
             nn.Linear(channels, channels // r, bias=False),
             nn.ReLU(inplace=True),
+            nn.Dropout(p=dropout),
             nn.Linear(channels // r, channels, bias=False),
             nn.Sigmoid()
         )
-    
+
     def forward(self, x):
         b, c, _, _ = x.size()
         y = self.squeeze(x).view(b, c)
@@ -192,7 +193,36 @@ def create_model_with_attention(num_classes: int, unfreeze_layers: int, dropout:
         unfreeze_layers: 0=all frozen, 1=layer4, 2=layer4+layer3, 3=+layer2, 4=all.
         dropout:         Dropout probability before the final linear layer.
     """
+
+
     model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
+
+    num_features = model.fc.in_features
+    model.fc = nn.Sequential(
+        nn.Dropout(p=dropout),
+        nn.Linear(num_features, num_classes),
+    )
+
+    state_dict = torch.load(
+        "model_artifacts/resnet_bird_classifier_u20_ep10_bs32_img224.pt",
+        map_location="cpu"
+    )["model_state_dict"]
+    with open("output.txt", "w") as f:
+            f.write(str(state_dict))
+    model.load_state_dict(state_dict)
+
+    resnet_layer_sizes = [256, 512, 1024, 2048]
+    resnet_layers_name = ["layer1", "layer2", "layer3","layer4"]
+
+    for s, l in zip(resnet_layer_sizes, resnet_layers_name):
+        layer_container = getattr(model, l)
+        for i in range(len(layer_container)):
+            original_block = layer_container[i]
+
+            layer_container[i] = nn.Sequential(
+                original_block,
+                SEBlock(channels=s, dropout=dropout)
+            )
 
     # Freeze everything first
     for param in model.parameters():
@@ -200,28 +230,12 @@ def create_model_with_attention(num_classes: int, unfreeze_layers: int, dropout:
 
     # Selectively unfreeze the last N residual blocks (counts from layer4 backwards)
     resnet_layers = [model.layer1, model.layer2, model.layer3, model.layer4]
-    resnet_layer_sizes = [256, 512, 1024, 2048]
-
-    for s, l in zip(resnet_layer_sizes, resnet_layers):
-        layer_container = getattr(model, l)
-        for i in range(len(layer_container)):
-            original_block = layer_container[i]
-
-            layer_container[i] = nn.Sequential(
-                original_block,
-                SEBlock(channels=s)
-            )
 
     for i in range(min(unfreeze_layers, len(resnet_layers))):
         for param in resnet_layers[-(i + 1)].parameters():
             param.requires_grad = True
 
     # Replace FC head with Dropout + Linear (always trainable as new params)
-    num_features = model.fc.in_features
-    model.fc = nn.Sequential(
-        nn.Dropout(p=dropout),
-        nn.Linear(num_features, num_classes),
-    )
     return model
 
 def _build_aug_transform() -> transforms.Compose:
