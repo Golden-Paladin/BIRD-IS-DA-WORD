@@ -136,6 +136,9 @@ class SEBlock(nn.Module):
             nn.Sigmoid()
         )
 
+        nn.init.ones_(self.excitation[0].weight)
+        nn.init.ones_(self.excitation[3].weight)
+
     def forward(self, x):
         b, c, _, _ = x.size()
         y = self.squeeze(x).view(b, c)

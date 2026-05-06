@@ -160,3 +160,20 @@ Epoch 10/10 - loss: 1.0828 - train_acc: 0.9780 - val_acc: 0.8298 - delta_val_acc
 Best val_acc: 0.8298  →  model_artifacts\best_efficientnet_bird_classifier.pt
 Final checkpoint: model_artifacts\efficientnet_bird_classifier.pt
 
+
+python .\resnet_model.py --batch-size 64 --unfreeze-layers 15 --epochs 15 --learning-rate 5e-4 --dropout .3 --weight-decay 1e-3 --adaptive-lr --adaptive-lr-factor .5
+Epoch 1/15 - loss: 5.1053 - train_acc: 0.0220 - val_acc: 0.0527 - delta_val_acc: N/A [best: 0.0527] - time: train=143.2s val=6.5s total=149.9s
+Epoch 2/15 - loss: 3.9341 - train_acc: 0.2153 - val_acc: 0.4322 - delta_val_acc: +0.3795 [best: 0.4322] - time: train=161.9s val=6.5s total=168.6s
+Epoch 3/15 - loss: 2.4230 - train_acc: 0.5757 - val_acc: 0.6415 - delta_val_acc: +0.2094 [best: 0.6415] - time: train=168.8s val=6.2s total=175.2s
+Epoch 4/15 - loss: 1.8923 - train_acc: 0.7127 - val_acc: 0.6933 - delta_val_acc: +0.0518 [best: 0.6933] - time: train=156.2s val=6.0s total=162.4s
+Epoch 5/15 - loss: 1.7014 - train_acc: 0.7666 - val_acc: 0.7291 - delta_val_acc: +0.0358 [best: 0.7291] - time: train=136.8s val=5.3s total=142.3s
+Epoch 6/15 - loss: 1.5665 - train_acc: 0.8145 - val_acc: 0.7498 - delta_val_acc: +0.0206 [best: 0.7498] - time: train=132.8s val=5.3s total=138.2s
+Epoch 7/15 - loss: 1.4875 - train_acc: 0.8398 - val_acc: 0.7633 - delta_val_acc: +0.0135 [best: 0.7633] - time: train=132.1s val=5.3s total=137.5s
+Epoch 8/15 - loss: 1.4285 - train_acc: 0.8601 - val_acc: 0.7658 - delta_val_acc: +0.0025 [best: 0.7658] - time: train=131.8s val=5.4s total=137.3s
+Epoch 9/15 - loss: 1.3828 - train_acc: 0.8793 - val_acc: 0.7746 - delta_val_acc: +0.0088 [best: 0.7746] - time: train=133.0s val=5.3s total=138.5s
+Epoch 10/15 - loss: 1.3351 - train_acc: 0.8910 - val_acc: 0.7767 - delta_val_acc: +0.0021 [best: 0.7767] - time: train=132.4s val=5.3s total=137.8s
+Epoch 11/15 - loss: 1.3070 - train_acc: 0.8991 - val_acc: 0.7848 - delta_val_acc: +0.0080 [best: 0.7848] - time: train=133.0s val=5.4s total=138.5s
+  [adaptive LR] val_acc dropped → LR scaled ×0.5: ['4.14e-06']
+Epoch 12/15 - loss: 1.2770 - train_acc: 0.9102 - val_acc: 0.7810 - delta_val_acc: -0.0038 [best: 0.7848] - time: train=132.6s val=5.5s total=138.1s
+
+
