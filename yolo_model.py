@@ -10,6 +10,8 @@ from pathlib import Path
 import torch
 from torchvision import transforms
 
+from classification_metrics import compute_classification_metrics
+
 MEAN = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
 STD = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
 
@@ -102,6 +104,42 @@ def export_pt_to_imagefolders(pt_dir: Path, temp_root: Path, max_files: int | No
                 image.save(class_dir / f"{file_path.stem}_{idx:05d}.jpg", quality=95)
 
 
+def evaluate_yolo_classifier(model: object, val_root: Path, image_size: int) -> dict[str, float | int | str]:
+    """Run a manual validation pass to compute weighted precision/recall/F1.
+
+    Ultralytics classification training already reports accuracy-style metrics,
+    but the project now standardizes on precision/recall/F1 for the best model
+    across all training scripts, so we compute those explicitly here.
+    """
+    image_paths = sorted(path for path in val_root.glob("*/*.jpg") if path.is_file())
+    if not image_paths:
+        raise FileNotFoundError(f"No validation images found under {val_root}")
+
+    names = getattr(model, "names", {})
+    if isinstance(names, dict):
+        class_names = [str(names[idx]) for idx in sorted(names)]
+    else:
+        class_names = [str(name) for name in names]
+    class_to_idx = {name: idx for idx, name in enumerate(class_names)}
+
+    targets: list[int] = []
+    predictions: list[int] = []
+    for image_path in image_paths:
+        class_name = image_path.parent.name
+        if class_name not in class_to_idx:
+            raise ValueError(f"Validation class {class_name!r} is missing from YOLO class names")
+        results = model.predict(source=str(image_path), imgsz=image_size, verbose=False)
+        if not results:
+            raise RuntimeError(f"YOLO predict returned no results for {image_path}")
+        result = results[0]
+        if result.probs is None:
+            raise RuntimeError(f"YOLO predict returned no classification probabilities for {image_path}")
+        targets.append(class_to_idx[class_name])
+        predictions.append(int(result.probs.top1))
+
+    return compute_classification_metrics(targets, predictions, len(class_names)).to_dict()
+
+
 def run_train(args: argparse.Namespace) -> None:
     YOLO = get_yolo_class()
     cfg = YOLOConfig(
@@ -165,9 +203,27 @@ def run_train(args: argparse.Namespace) -> None:
     final_path = out_dir / cfg.checkpoint_name
     shutil.copy2(best_path, final_path)
 
+    best_model = YOLO(str(best_path))
+    best_metrics = evaluate_yolo_classifier(best_model, temp_root / "val", cfg.image_size)
+
     config_path = out_dir / "yolo_config.json"
-    config_path.write_text(json.dumps(asdict(cfg), indent=2), encoding="utf-8")
+    config_path.write_text(
+        json.dumps({"config": asdict(cfg), "best_metrics": best_metrics}, indent=2),
+        encoding="utf-8",
+    )
     print(f"Saved checkpoint: {final_path}")
+    print(
+        "Best model metrics (weighted) - "
+        f"precision: {best_metrics['precision_weighted']:.4f} - "
+        f"recall: {best_metrics['recall_weighted']:.4f} - "
+        f"f1score: {best_metrics['f1_weighted']:.4f}"
+    )
+    print(
+        "Best model metrics (macro) - "
+        f"precision: {best_metrics['precision_macro']:.4f} - "
+        f"recall: {best_metrics['recall_macro']:.4f} - "
+        f"f1score: {best_metrics['f1_macro']:.4f}"
+    )
     print(f"Saved config: {config_path}")
 
 

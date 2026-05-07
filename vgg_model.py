@@ -14,6 +14,7 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import models, transforms
 
+from classification_metrics import ClassificationMetrics, compute_classification_metrics
 from pt_streaming import LazyPtDataset, collect_classes, scan_pt_split
 
 # ImageNet normalisation constants — VGG-16 pretrained weights require these.
@@ -274,9 +275,10 @@ def run_train(args: argparse.Namespace) -> None:
         # Step decay: halve LR every (epochs // 3) steps
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=max(1, cfg.epochs // 3), gamma=0.5)
 
-    best_acc             = 0.0
+    best_acc             = -1.0
     prev_acc             = None   # previous epoch val_acc for computing delta
     best_checkpoint_path = out_dir / f"best_{cfg.checkpoint_name}"
+    best_metrics: ClassificationMetrics | None = None
 
     for epoch in range(cfg.epochs):
         epoch_start = time.perf_counter()
@@ -311,6 +313,8 @@ def run_train(args: argparse.Namespace) -> None:
         model.eval()
         correct   = 0
         total     = 0
+        val_targets: list[int] = []
+        val_predictions: list[int] = []
         val_start = time.perf_counter()
         with torch.no_grad():
             for x_batch, y_batch in test_loader:
@@ -322,6 +326,8 @@ def run_train(args: argparse.Namespace) -> None:
                 preds    = model(x_batch).argmax(dim=1)
                 correct += (preds == y_batch).sum().item()
                 total   += y_batch.size(0)
+                val_targets.extend(y_batch.cpu().tolist())
+                val_predictions.extend(preds.cpu().tolist())
         val_seconds = time.perf_counter() - val_start
 
         avg_loss  = running_loss / max(len(train_loader), 1)
@@ -346,9 +352,11 @@ def run_train(args: argparse.Namespace) -> None:
 
         if val_acc > best_acc:
             best_acc = val_acc
+            best_metrics = compute_classification_metrics(val_targets, val_predictions, len(classes))
             torch.save(
                 {"model_state_dict": model.state_dict(), "classes": classes,
-                 "config": asdict(cfg), "model_name": "vgg16"},
+                 "config": asdict(cfg), "model_name": "vgg16",
+                 "best_metrics": best_metrics.to_dict()},
                 best_checkpoint_path,
             )
 
@@ -367,12 +375,26 @@ def run_train(args: argparse.Namespace) -> None:
     checkpoint_path = out_dir / cfg.checkpoint_name
     torch.save(
         {"model_state_dict": model.state_dict(), "classes": classes,
-         "config": asdict(cfg), "model_name": "vgg16"},
+         "config": asdict(cfg), "model_name": "vgg16",
+         "best_metrics": best_metrics.to_dict() if best_metrics is not None else None},
         checkpoint_path,
     )
     config_path = out_dir / "vgg_config.json"
     config_path.write_text(json.dumps(asdict(cfg), indent=2), encoding="utf-8")
     print(f"\nBest val_acc: {best_acc:.4f}  →  {best_checkpoint_path}")
+    if best_metrics is not None:
+        print(
+            "Best model metrics (weighted) - "
+            f"precision: {best_metrics.precision_weighted:.4f} - "
+            f"recall: {best_metrics.recall_weighted:.4f} - "
+            f"f1score: {best_metrics.f1_weighted:.4f}"
+        )
+        print(
+            "Best model metrics (macro) - "
+            f"precision: {best_metrics.precision_macro:.4f} - "
+            f"recall: {best_metrics.recall_macro:.4f} - "
+            f"f1score: {best_metrics.f1_macro:.4f}"
+        )
     print(f"Final checkpoint: {checkpoint_path}")
     print(f"Config: {config_path}")
 

@@ -14,6 +14,7 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import models, transforms
 
+from classification_metrics import ClassificationMetrics, compute_classification_metrics
 from pt_streaming import LazyPtDataset, collect_classes, scan_pt_split
 
 # ImageNet normalization constants — the pretrained backbone expects these.
@@ -128,24 +129,52 @@ class SEBlock(nn.Module):
         self.squeeze = nn.AdaptiveAvgPool2d(1)
         # The excitation will take each small part of the image
         # and check how much it matters in the context of global
+        # Keep the module layout compatible with older checkpoints by storing
+        # only the weighted layers in the Sequential container. We still apply
+        # dropout during training, but we do it functionally in forward() so
+        # historical keys like excitation.2.weight continue to load cleanly.
         self.excitation = nn.Sequential(
             nn.Linear(channels, channels // r, bias=False),
             nn.ReLU(inplace=True),
-            nn.Dropout(p=dropout),
             nn.Linear(channels // r, channels, bias=False),
             nn.Sigmoid()
         )
+        self.dropout = float(dropout)
 
         nn.init.ones_(self.excitation[0].weight)
-        nn.init.ones_(self.excitation[3].weight)
+        nn.init.ones_(self.excitation[2].weight)
 
     def forward(self, x):
         b, c, _, _ = x.size()
         y = self.squeeze(x).view(b, c)
 
-        y = self.excitation(y).view(b, c, 1, 1)
+        y = self.excitation[0](y)
+        y = self.excitation[1](y)
+        y = F.dropout(y, p=self.dropout, training=self.training)
+        y = self.excitation[2](y)
+        y = self.excitation[3](y)
+        y = y.view(b, c, 1, 1)
 
         return x * y.expand_as(x)
+
+
+def _inject_se_blocks(model: nn.Module, dropout: float) -> None:
+    """Wrap each ResNet stage block with a squeeze-excitation attention module.
+
+    This preserves the original pretrained residual block weights while adding a
+    lightweight channel-attention module after each block.
+    """
+    resnet_layer_sizes = [256, 512, 1024, 2048]
+    resnet_layers_name = ["layer1", "layer2", "layer3", "layer4"]
+
+    for channels, layer_name in zip(resnet_layer_sizes, resnet_layers_name):
+        layer_container = getattr(model, layer_name)
+        for index in range(len(layer_container)):
+            original_block = layer_container[index]
+            layer_container[index] = nn.Sequential(
+                original_block,
+                SEBlock(channels=channels, dropout=dropout),
+            )
 
 def create_model(num_classes: int, unfreeze_layers: int, dropout: float) -> nn.Module:
     """Build a ResNet-50 fine-tuned for bird classification.
@@ -200,32 +229,18 @@ def create_model_with_attention(num_classes: int, unfreeze_layers: int, dropout:
 
     model = models.resnet50(weights=models.ResNet50_Weights.IMAGENET1K_V1)
 
+    # Replace the ImageNet classifier first so the architecture already matches
+    # our bird-species output size before any checkpoint is loaded later.
     num_features = model.fc.in_features
     model.fc = nn.Sequential(
         nn.Dropout(p=dropout),
         nn.Linear(num_features, num_classes),
     )
 
-    state_dict = torch.load(
-        "model_artifacts/resnet_bird_classifier_u20_ep10_bs32_img224.pt",
-        map_location="cpu"
-    )["model_state_dict"]
-    with open("output.txt", "w") as f:
-            f.write(str(state_dict))
-    model.load_state_dict(state_dict)
-
-    resnet_layer_sizes = [256, 512, 1024, 2048]
-    resnet_layers_name = ["layer1", "layer2", "layer3","layer4"]
-
-    for s, l in zip(resnet_layer_sizes, resnet_layers_name):
-        layer_container = getattr(model, l)
-        for i in range(len(layer_container)):
-            original_block = layer_container[i]
-
-            layer_container[i] = nn.Sequential(
-                original_block,
-                SEBlock(channels=s, dropout=dropout)
-            )
+    # Add channel-attention wrappers around each residual block. Unlike the old
+    # implementation, this does not load a hard-coded checkpoint or write debug
+    # files, which makes it safe for fresh training and generic inference.
+    _inject_se_blocks(model, dropout=dropout)
 
     # Freeze everything first
     for param in model.parameters():
@@ -368,9 +383,10 @@ def run_train(args: argparse.Namespace) -> None:
         # StepLR: halves every (epochs // 3) epochs — more abrupt step-down
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=max(1, cfg.epochs // 3), gamma=0.5)
 
-    best_acc             = 0.0
+    best_acc             = -1.0
     prev_acc             = None   # track previous epoch val_acc for delta computation
     best_checkpoint_path = out_dir / f"best_{cfg.checkpoint_name}"
+    best_metrics: ClassificationMetrics | None = None
 
     for epoch in range(cfg.epochs):
         epoch_start = time.perf_counter()
@@ -405,6 +421,8 @@ def run_train(args: argparse.Namespace) -> None:
         model.eval()
         correct   = 0
         total     = 0
+        val_targets: list[int] = []
+        val_predictions: list[int] = []
         val_start = time.perf_counter()
         with torch.no_grad():
             for x_batch, y_batch in test_loader:
@@ -416,6 +434,8 @@ def run_train(args: argparse.Namespace) -> None:
                 preds    = model(x_batch).argmax(dim=1)
                 correct += (preds == y_batch).sum().item()
                 total   += y_batch.size(0)
+                val_targets.extend(y_batch.cpu().tolist())
+                val_predictions.extend(preds.cpu().tolist())
         val_seconds = time.perf_counter() - val_start
 
         avg_loss  = running_loss / max(len(train_loader), 1)
@@ -439,9 +459,11 @@ def run_train(args: argparse.Namespace) -> None:
 
         if val_acc > best_acc:
             best_acc = val_acc
+            best_metrics = compute_classification_metrics(val_targets, val_predictions, len(classes))
             torch.save(
                 {"model_state_dict": model.state_dict(), "classes": classes,
-                 "config": asdict(cfg), "model_name": "resnet50"},
+                 "config": asdict(cfg), "model_name": "resnet50",
+                 "best_metrics": best_metrics.to_dict()},
                 best_checkpoint_path,
             )
 
@@ -459,12 +481,26 @@ def run_train(args: argparse.Namespace) -> None:
     checkpoint_path = out_dir / cfg.checkpoint_name
     torch.save(
         {"model_state_dict": model.state_dict(), "classes": classes,
-         "config": asdict(cfg), "model_name": "resnet50"},
+         "config": asdict(cfg), "model_name": "resnet50",
+         "best_metrics": best_metrics.to_dict() if best_metrics is not None else None},
         checkpoint_path,
     )
     config_path = out_dir / "resnet_config.json"
     config_path.write_text(json.dumps(asdict(cfg), indent=2), encoding="utf-8")
     print(f"\nBest val_acc: {best_acc:.4f}  →  {best_checkpoint_path}")
+    if best_metrics is not None:
+        print(
+            "Best model metrics (weighted) - "
+            f"precision: {best_metrics.precision_weighted:.4f} - "
+            f"recall: {best_metrics.recall_weighted:.4f} - "
+            f"f1score: {best_metrics.f1_weighted:.4f}"
+        )
+        print(
+            "Best model metrics (macro) - "
+            f"precision: {best_metrics.precision_macro:.4f} - "
+            f"recall: {best_metrics.recall_macro:.4f} - "
+            f"f1score: {best_metrics.f1_macro:.4f}"
+        )
     print(f"Final checkpoint: {checkpoint_path}")
     print(f"Config: {config_path}")
 

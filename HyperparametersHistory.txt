@@ -177,3 +177,8 @@ Epoch 11/15 - loss: 1.3070 - train_acc: 0.8991 - val_acc: 0.7848 - delta_val_acc
 Epoch 12/15 - loss: 1.2770 - train_acc: 0.9102 - val_acc: 0.7810 - delta_val_acc: -0.0038 [best: 0.7848] - time: train=132.6s val=5.5s total=138.1s
 
 
+
+
+
+
+
