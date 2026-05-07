@@ -19,6 +19,8 @@ env/
 model_artifacts/
 yolo_cls_data/
 runs/
+pt_data/
+
 
 # OS files
 .DS_Store

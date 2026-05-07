@@ -4,7 +4,7 @@ A modular bird-species project supporting:
 
 - **EfficientNet**, **ResNet-50**, and **VGG-16** base classifiers trained from `.pt` tensors
 - **YOLOv8n-cls** for direct end-to-end image classification
-- **YOLO detection + base-classifier handoff** for video: detect birds with boxes, crop once, classify with a base model, and keep that label until the bird leaves
+- **YOLO detection + base-classifier handoff** for images: detect bird boxes, crop each box, classify with a base model, and return species labels
 
 Training streams one class file at a time so you never load the entire dataset into RAM simultaneously.
 
@@ -66,7 +66,7 @@ Generated files in `pt_data/`: `Acadian_Flycatcher_Train.pt`, `Acadian_Flycatche
 | `resnet_model.py` | ResNet-50 | 23.9 M | Solid, well-understood baseline |
 | `vgg_model.py` | VGG-16 | 135 M | Heavy — keep batch_size ≤ 4 |
 | `yolo_model.py` | YOLOv8n-cls | ~3 M | Direct bird-species classification |
-| `yolo_detection_classifier.py` | YOLO detection + base classifier | detector + chosen checkpoint | Video pipeline: detect bird boxes, crop once, classify once per track |
+| `yolo_detection_classifier.py` | YOLO detection + base classifier | detector + chosen checkpoint | Image pipeline: detect bird boxes, crop, and classify each detection |
 
 ---
 
@@ -294,7 +294,7 @@ What this version does:
 
 ---
 
-### 5) YOLO detection + base classifier
+### 5) YOLO detection + base classifier (image-only)
 
 This is the second YOLO workflow in the project.
 
@@ -350,38 +350,23 @@ Detected 1 bird(s):
 
 If you pass `--output-path`, the saved image contains the YOLO box plus the classifier label.
 
-#### Optional video mode
-
-If you later want tracked labels across frames, the older video workflow is still available through the `video` sub-command:
-
-```powershell
-python .\yolo_detection_classifier.py video `
-  --source "C:\path\to\birds.mp4" `
-  --classifier-checkpoint ".\model_artifacts\best_efficientnet_bird_classifier.pt" `
-  --output-path ".\runs\annotated_birds.mp4"
-```
-
 Key options:
 
 | Flag | Meaning |
 |------|---------|
 | `--image-path` | Still image to detect and classify |
-| `--source` | Video path or webcam index like `0` for `video` mode only |
 | `--detector-path` | YOLO detection checkpoint, default `yolo26n.pt` |
 | `--classifier-checkpoint` | Base classifier checkpoint from EfficientNet / ResNet / VGG |
-| `--output-path` | Save an annotated image (or video in `video` mode) |
+| `--output-path` | Save an annotated image with boxes + labels |
 | `--detector-image-size` | YOLO detector input size |
 | `--classifier-image-size` | Optional override for crop resize size; otherwise the checkpoint's stored `image_size` is used |
 | `--crop-padding` | Extra context around the detected bird before classification |
 | `--min-box-size` | Ignore tiny detections that are usually too small to classify well |
-| `--track-ttl-frames` | Video mode only: how long a missing track is kept before being considered gone |
-| `--show` / `--no-show` | Video mode only: show a live annotated window while processing |
 
 Important behavior notes:
 
-- In image mode there is no tracking: each detected bird box is classified once.
+- This script is intentionally image-only: each detected bird box is classified once.
 - The default classifier is the best EfficientNet checkpoint because it currently gives the strongest accuracy / memory trade-off in this project.
-- If YOLO tracking cannot provide persistent IDs, the script falls back to per-frame classification and prints a warning.
 - If the detector model does not expose a `bird` class name, the script processes all detections instead of silently failing.
 - Crops are clamped to the frame bounds so edge detections do not crash the pipeline.
 
@@ -426,6 +411,24 @@ Best-checkpoint metrics are also stored inside the PyTorch classifier checkpoint
 
 ---
 
+## Cleanup guide
+
+Safe to delete (re-generated automatically):
+
+- `__pycache__/`
+- `runs/`
+- `yolo_cls_data/`
+
+Keep these (important project assets):
+
+- `model_artifacts/` (trained model checkpoints and config JSONs)
+- `pt_data/` (training/test tensors built from your dataset)
+- `yolo26n.pt` and `yolov8n-cls.pt` (YOLO base weights)
+
+If you clean the workspace and later train again, the scripts will recreate temporary folders as needed.
+
+---
+
 ## Memory tips
 
 - Training streams one `.pt` file at a time — the whole dataset is never concatenated into RAM.
@@ -458,10 +461,10 @@ A: Always use the `best_*.pt` checkpoint — it was saved from the epoch with th
 A: After every epoch the validation predictions are collected. When a new best `val_acc` is reached, the script computes precision / recall / F1 for that epoch and stores them as the metrics for the best checkpoint.
 
 **Q: Do I now have two YOLO versions in this project?**  
-A: Yes. `yolo_model.py` is direct YOLO classification. `yolo_detection_classifier.py` is the video pipeline that detects birds with bounding boxes and then classifies the cropped bird image with one of your base checkpoints.
+A: Yes. `yolo_model.py` is direct YOLO classification. `yolo_detection_classifier.py` detects birds with bounding boxes in a still image and then classifies each cropped bird image with one of your base checkpoints.
 
 **Q: Which YOLO version should I use?**  
-A: Use `yolo_model.py` if you want the simplest end-to-end classifier for single images. Use `yolo_detection_classifier.py` when you want boxes in video plus the stronger species classifier from EfficientNet / ResNet / VGG.
+A: Use `yolo_model.py` if you want the simplest end-to-end classifier for one image. Use `yolo_detection_classifier.py` when you want bounding boxes plus the stronger species classifier from EfficientNet / ResNet / VGG.
 
 **Q: What does a negative `delta_val_acc` mean?**  
 A: The model's validation accuracy dropped compared to the previous epoch. Occasional dips are normal (stochastic noise), but consistent negative deltas suggest the LR is too high or the model is overfitting. Use `--adaptive-lr` to automatically reduce the LR when this happens.
