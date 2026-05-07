@@ -14,6 +14,7 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import models, transforms
 
+from bird_classifier_inference import load_bird_classifier, predict_bird_from_pil, resolve_checkpoint_path
 from classification_metrics import ClassificationMetrics, compute_classification_metrics
 from pt_streaming import LazyPtDataset, collect_classes, scan_pt_split
 
@@ -62,6 +63,10 @@ def normalize_cli_args(argv: list[str]) -> list[str]:
         return ["train"]
     if argv[0] in {"train", "predict", "-h", "--help"}:
         return argv
+    if argv[0] == "--image-path":
+        return ["predict", *argv]
+    if Path(argv[0]).suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}:
+        return ["predict", argv[0], *argv[1:]]
     return ["train", *argv]
 
 
@@ -111,15 +116,19 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     # ── predict sub-command ──────────────────────────────────────────────────
     pred = subparsers.add_parser("predict", help="Predict bird class for one image")
-    pred.add_argument("--image-path", type=Path, required=True)
+    pred.add_argument("image_path", nargs="?", type=Path)
+    pred.add_argument("--image-path", dest="image_path_flag", type=Path, default=None, help=argparse.SUPPRESS)
     pred.add_argument(
-        "--checkpoint-path", type=Path,
-        default=Path("model_artifacts") / "resnet_bird_classifier.pt",
+        "--checkpoint-path", type=Path, default=None,
+        help="Optional checkpoint override. By default the best ResNet checkpoint is used if present.",
     )
-    pred.add_argument("--image-size", type=int, default=None,
-                      help="Optional override. Defaults to training image_size from checkpoint.")
 
-    return parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
+    args = parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
+    if args.command == "predict":
+        args.image_path = args.image_path or args.image_path_flag
+        if args.image_path is None:
+            parser.error("predict requires an image path")
+    return args
 
 class SEBlock(nn.Module):
     def __init__ (self, channels, r=16, dropout=0.2):
@@ -511,33 +520,21 @@ def run_predict(args: argparse.Namespace) -> None:
     All necessary config (dropout, image size, class list) is embedded inside
     the checkpoint so no extra flags are required.
     """
-    checkpoint = _safe_torch_load(args.checkpoint_path)
-    classes: list[str] = checkpoint["classes"]
-    cfg_dict   = checkpoint.get("config", {})
-    dropout    = float(cfg_dict.get("dropout", 0.3))
-    image_size = int(args.image_size or cfg_dict.get("image_size", 224))
-
-    # Reconstruct model architecture and load saved weights
-    model = create_model_with_attention(num_classes=len(classes), unfreeze_layers=0, dropout=dropout)
-    model.load_state_dict(checkpoint["model_state_dict"])
-    model.eval()
-
-    transform = transforms.Compose([
-        transforms.Resize((image_size, image_size)),
-        transforms.ToTensor(),
-        transforms.Normalize(mean=MEAN, std=STD),
-    ])
-
+    checkpoint_path = resolve_checkpoint_path(
+        args.checkpoint_path,
+        [
+            Path("model_artifacts") / "best_resnet_bird_classifier_u20_ep10_bs32_img224.pt",
+            Path("model_artifacts") / "resnet_bird_classifier_u20_ep10_bs32_img224.pt",
+            Path("model_artifacts") / "resnet_bird_classifier.pt",
+        ],
+    )
+    classifier = load_bird_classifier(checkpoint_path)
     with Image.open(args.image_path) as image:
-        x_tensor = transform(image.convert("RGB")).unsqueeze(0)  # add batch dim
+        label, confidence, _ = predict_bird_from_pil(image.convert("RGB"), classifier)
 
-    with torch.no_grad():
-        probs   = torch.softmax(model(x_tensor), dim=1)
-    top_idx  = int(probs.argmax(dim=1).item())
-    top_conf = float(probs[0, top_idx].item())
-
-    print(f"Predicted bird: {classes[top_idx]}")
-    print(f"Confidence: {top_conf:.4f}")
+    print(f"Predicted bird: {label}")
+    print(f"Confidence: {confidence:.4f}")
+    print(f"Checkpoint: {checkpoint_path}")
 
 
 def main() -> None:

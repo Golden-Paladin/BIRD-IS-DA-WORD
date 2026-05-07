@@ -1,6 +1,7 @@
 ﻿from __future__ import annotations
 from dataclasses import dataclass
 from pathlib import Path
+
 import torch
 from PIL import Image
 from torchvision import transforms
@@ -22,6 +23,35 @@ class LoadedBirdClassifier:
     image_size: int
     device: torch.device
     model_name: str
+
+
+def resolve_checkpoint_path(
+    override_path: str | Path | None,
+    fallback_paths: list[str | Path],
+) -> Path:
+    """Choose an inference checkpoint with a best-model-first fallback strategy.
+
+    Args:
+        override_path: Explicit path requested by the caller. If provided, it is
+            used as-is.
+        fallback_paths: Ordered candidates to try when no override is supplied.
+
+    Returns:
+        A Path pointing at the selected checkpoint.
+
+    Raises:
+        FileNotFoundError: If no fallback checkpoint exists on disk.
+    """
+    if override_path is not None:
+        return Path(override_path)
+
+    candidates = [Path(path) for path in fallback_paths]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    searched = ", ".join(str(path) for path in candidates)
+    raise FileNotFoundError(f"No checkpoint could be found. Searched: {searched}")
 def _build_model_from_checkpoint(checkpoint: dict) -> tuple[torch.nn.Module, list[str], int, str]:
     """Recreate the correct model architecture based on checkpoint metadata."""
     classes: list[str] = list(checkpoint["classes"])
@@ -97,7 +127,7 @@ def predict_bird_from_pil(
     image_size: int | None = None,
 ) -> tuple[str, float, int]:
     """Classify one RGB image/crop and return label, confidence, and class index."""
-    target_size = int(image_size or classifier.image_size)
+    target_size = classifier.image_size if image_size is None else int(image_size)
     transform = build_inference_transform(target_size)
     x_tensor = transform(image.convert("RGB")).unsqueeze(0).to(classifier.device)
     with torch.no_grad():

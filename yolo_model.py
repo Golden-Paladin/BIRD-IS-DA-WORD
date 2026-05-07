@@ -6,6 +6,7 @@ import shutil
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
+from typing import Any
 
 import torch
 from torchvision import transforms
@@ -34,6 +35,10 @@ def normalize_cli_args(argv: list[str]) -> list[str]:
         return ["train"]
     if argv[0] in {"train", "predict", "-h", "--help"}:
         return argv
+    if argv[0] == "--image-path":
+        return ["predict", *argv]
+    if Path(argv[0]).suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}:
+        return ["predict", argv[0], *argv[1:]]
     return ["train", *argv]
 
 
@@ -53,15 +58,21 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     train_parser.add_argument("--max-files", type=int, default=None, help="Optional limit for quick smoke tests")
 
     predict_parser = subparsers.add_parser("predict", help="Predict bird class for one image")
-    predict_parser.add_argument("--image-path", type=Path, required=True)
+    predict_parser.add_argument("image_path", nargs="?", type=Path)
+    predict_parser.add_argument("--image-path", dest="image_path_flag", type=Path, default=None, help=argparse.SUPPRESS)
     predict_parser.add_argument(
         "--checkpoint-path",
         type=Path,
-        default=Path("model_artifacts") / "yolo_bird_classifier.pt",
+        default=None,
+        help="Optional checkpoint override. By default the trained YOLO checkpoint is used if present.",
     )
-    predict_parser.add_argument("--image-size", type=int, default=224)
 
-    return parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
+    args = parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
+    if args.command == "predict":
+        args.image_path = args.image_path or args.image_path_flag
+        if args.image_path is None:
+            parser.error("predict requires an image path")
+    return args
 
 
 def get_yolo_class() -> type:
@@ -104,7 +115,7 @@ def export_pt_to_imagefolders(pt_dir: Path, temp_root: Path, max_files: int | No
                 image.save(class_dir / f"{file_path.stem}_{idx:05d}.jpg", quality=95)
 
 
-def evaluate_yolo_classifier(model: object, val_root: Path, image_size: int) -> dict[str, float | int | str]:
+def evaluate_yolo_classifier(model: Any, val_root: Path, image_size: int) -> dict[str, float | int | str]:
     """Run a manual validation pass to compute weighted precision/recall/F1.
 
     Ultralytics classification training already reports accuracy-style metrics,
@@ -229,8 +240,11 @@ def run_train(args: argparse.Namespace) -> None:
 
 def run_predict(args: argparse.Namespace) -> None:
     YOLO = get_yolo_class()
-    model = YOLO(str(args.checkpoint_path))
-    results = model.predict(source=str(args.image_path), imgsz=args.image_size, verbose=False)
+    checkpoint_path = Path(args.checkpoint_path) if args.checkpoint_path is not None else (
+        Path("model_artifacts") / "yolo_bird_classifier.pt"
+    )
+    model = YOLO(str(checkpoint_path))
+    results = model.predict(source=str(args.image_path), imgsz=224, verbose=False)
     if not results:
         raise RuntimeError("YOLO predict returned no results.")
 
@@ -244,6 +258,7 @@ def run_predict(args: argparse.Namespace) -> None:
 
     print(f"Predicted bird: {class_name}")
     print(f"Confidence: {confidence:.4f}")
+    print(f"Checkpoint: {checkpoint_path}")
 
 
 def main() -> None:
