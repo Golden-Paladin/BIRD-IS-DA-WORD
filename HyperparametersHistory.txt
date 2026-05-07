@@ -178,7 +178,9 @@ Epoch 12/15 - loss: 1.2770 - train_acc: 0.9102 - val_acc: 0.7810 - delta_val_acc
 
 
 
-
+python .\yolo_model.py train --image-size 640 --epochs 25 --batch-size 8
+Best model metrics (weighted) - precision: 0.3409 - recall: 0.3020 - f1score: 0.2795
+Best model metrics (macro) - precision: 0.3417 - recall: 0.3023 - f1score: 0.2801
 
 
 
