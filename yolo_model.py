@@ -7,7 +7,7 @@ import shutil
 import sys
 from dataclasses import asdict, dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 import torch
 from torchvision import transforms
@@ -21,6 +21,8 @@ STD = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
 
 @dataclass
 class YOLOConfig:
+    """Configuration for one YOLO classification training run."""
+
     pt_data_dir: str = "pt_data"
     output_dir: str = "model_artifacts"
     checkpoint_name: str = "yolo_bird_classifier.pt"
@@ -29,10 +31,10 @@ class YOLOConfig:
     batch_size: int = 4
     epochs: int = 3
     temp_data_dir: str = "yolo_cls_data"
-    max_files: int | None = None
 
 
 def normalize_cli_args(argv: list[str]) -> list[str]:
+    """Allow source-first prediction and train-first defaults."""
     if not argv:
         return ["train"]
     if argv[0] in {"train", "predict", "-h", "--help"}:
@@ -49,6 +51,7 @@ def normalize_cli_args(argv: list[str]) -> list[str]:
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
+    """Build CLI arguments for train and predict commands."""
     parser = argparse.ArgumentParser(description="Train or run inference with a YOLO bird classifier.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
@@ -61,7 +64,6 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     train_parser.add_argument("--batch-size", type=int, default=4)
     train_parser.add_argument("--epochs", type=int, default=3)
     train_parser.add_argument("--temp-data-dir", type=Path, default=Path("yolo_cls_data"))
-    train_parser.add_argument("--max-files", type=int, default=None, help="Optional limit for quick smoke tests")
 
     predict_parser = subparsers.add_parser("predict", help="Predict bird class for one image")
     predict_parser.add_argument("predict_arg1", nargs="?", type=Path)
@@ -101,6 +103,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
 
 def get_yolo_class() -> type:
+    """Import Ultralytics YOLO lazily for faster CLI help and clearer errors."""
     try:
         from ultralytics import YOLO
     except ImportError as exc:
@@ -111,10 +114,12 @@ def get_yolo_class() -> type:
 
 
 def denormalize_tensor(x_tensor: torch.Tensor) -> torch.Tensor:
+    """Convert normalized tensors back to displayable RGB tensors."""
     return (x_tensor * STD + MEAN).clamp(0.0, 1.0)
 
 
-def export_pt_to_imagefolders(pt_dir: Path, temp_root: Path, max_files: int | None = None) -> None:
+def export_pt_to_imagefolders(pt_dir: Path, temp_root: Path) -> None:
+    """Convert per-class PT tensors to image folders expected by YOLO classification."""
     if temp_root.exists():
         shutil.rmtree(temp_root)
 
@@ -122,8 +127,6 @@ def export_pt_to_imagefolders(pt_dir: Path, temp_root: Path, max_files: int | No
 
     for split_name, split_folder in (("Train", "train"), ("Test", "val")):
         files = sorted(pt_dir.glob(f"*_{split_name}.pt"))
-        if max_files is not None:
-            files = files[:max_files]
         if not files:
             raise FileNotFoundError(f"No files found for split '{split_name}' in {pt_dir}")
 
@@ -225,6 +228,7 @@ def _extract_yolo_acc_history(results_csv: Path) -> tuple[list[float | None], li
 
 
 def run_train(args: argparse.Namespace) -> None:
+    """Train YOLO classifier from exported PT tensors and save artifacts."""
     YOLO = get_yolo_class()
     cfg = YOLOConfig(
         pt_data_dir=str(args.pt_data_dir),
@@ -235,7 +239,6 @@ def run_train(args: argparse.Namespace) -> None:
         batch_size=args.batch_size,
         epochs=args.epochs,
         temp_data_dir=str(args.temp_data_dir),
-        max_files=args.max_files,
     )
 
     if cfg.image_size <= 0:
@@ -247,7 +250,7 @@ def run_train(args: argparse.Namespace) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     print("Converting .pt tensors into YOLO classification image folders...")
-    export_pt_to_imagefolders(pt_dir, temp_root, cfg.max_files)
+    export_pt_to_imagefolders(pt_dir, temp_root)
 
     print("Starting YOLO training...")
     model = YOLO(cfg.base_model)
@@ -283,6 +286,7 @@ def run_train(args: argparse.Namespace) -> None:
 
     if best_path is None or not best_path.exists():
         raise FileNotFoundError("YOLO training finished but best.pt could not be located.")
+    resolved_best_path = cast(Path, best_path)
 
     trainer_save_dir = None
     if trainer is not None and hasattr(trainer, "save_dir"):
@@ -305,9 +309,9 @@ def run_train(args: argparse.Namespace) -> None:
             print("Could not extract epoch accuracy history from YOLO results.csv; skipping error curve PNG.")
 
     final_path = out_dir / cfg.checkpoint_name
-    shutil.copy2(best_path, final_path)
+    shutil.copy2(resolved_best_path, final_path)
 
-    best_model = YOLO(str(best_path))
+    best_model = YOLO(str(resolved_best_path))
     best_metrics = evaluate_yolo_classifier(best_model, temp_root / "val", cfg.image_size)
 
     config_path = out_dir / "yolo_config.json"
@@ -332,6 +336,7 @@ def run_train(args: argparse.Namespace) -> None:
 
 
 def run_predict(args: argparse.Namespace) -> None:
+    """Run single-image bird prediction with a YOLO classification checkpoint."""
     YOLO = get_yolo_class()
     if args.checkpoint_path is not None:
         checkpoint_path = Path(args.checkpoint_path)
@@ -363,6 +368,7 @@ def run_predict(args: argparse.Namespace) -> None:
 
 
 def main() -> None:
+    """CLI entrypoint for YOLO training and inference."""
     args = parse_args()
     if args.command == "train":
         run_train(args)

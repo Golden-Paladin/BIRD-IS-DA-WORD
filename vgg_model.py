@@ -45,7 +45,6 @@ class VGGConfig:
     weight_decay: float = 1e-4
     dropout: float = 0.5           # VGG already has dropout in its classifier; default higher than ResNet
     augment: bool = True
-    max_files: int | None = None
     # --- adaptive LR ---
     # When True, the learning rate of all parameter groups is scaled down by
     # adaptive_lr_factor whenever val_acc drops relative to the previous epoch.
@@ -79,7 +78,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train or run inference with a VGG bird classifier.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # ── train sub-command ────────────────────────────────────────────────────
+    # Train sub-command.
     p = subparsers.add_parser("train", help="Train from generated .pt files")
     p.add_argument("--pt-data-dir", type=Path, default=Path("pt_data"))
     p.add_argument("--output-dir", type=Path, default=Path("model_artifacts"))
@@ -97,13 +96,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--lr-scheduler", default="cosine", choices=["cosine", "step", "none"],
                    help="cosine: smooth decay; step: halve every 1/3 epochs; none: fixed LR")
     p.add_argument("--label-smoothing", type=float, default=0.1,
-                   help="Cross-entropy label smoothing — reduces overconfidence on 200 classes")
+                   help="Cross-entropy label smoothing reduces overconfidence on 200 classes")
     p.add_argument("--weight-decay", type=float, default=1e-4,
                    help="AdamW L2 regularisation coefficient")
     p.add_argument("--dropout", type=float, default=0.5, help="Dropout rate in the classifier (default 0.5)")
     p.add_argument("--augment", action=argparse.BooleanOptionalAction, default=True,
                    help="Random flip / rotate / erase applied every training epoch")
-    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick smoke tests")
     # adaptive LR flags
     p.add_argument(
         "--adaptive-lr", action=argparse.BooleanOptionalAction, default=False,
@@ -118,7 +116,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Factor applied to all LRs when delta_val_acc < 0 (default 0.5 = halve LR)",
     )
 
-    # ── predict sub-command ──────────────────────────────────────────────────
+    # Predict sub-command.
     pred = subparsers.add_parser("predict", help="Predict bird class for one image")
     pred.add_argument("predict_arg1", nargs="?", type=Path)
     pred.add_argument("predict_arg2", nargs="?", type=Path)
@@ -228,7 +226,7 @@ def run_train(args: argparse.Namespace) -> None:
     stay memory-efficient), trains with differential learning rates, optional
     LR scheduling, and optional adaptive LR when validation accuracy drops.
 
-    Note: VGG-16 has 135 M parameters — keep batch_size low (2–4) to stay
+    Note: VGG-16 has 135 M parameters, so keep batch_size low (2-4) to stay
     within 32 GB RAM.
     """
     cfg = VGGConfig(
@@ -246,7 +244,6 @@ def run_train(args: argparse.Namespace) -> None:
         weight_decay=args.weight_decay,
         dropout=args.dropout,
         augment=args.augment,
-        max_files=args.max_files,
         adaptive_lr=args.adaptive_lr,
         adaptive_lr_factor=args.adaptive_lr_factor,
     )
@@ -259,8 +256,8 @@ def run_train(args: argparse.Namespace) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Discover .pt split files and build a unified, sorted class list
-    train_records = scan_pt_split(pt_dir, "Train", cfg.max_files)
-    test_records  = scan_pt_split(pt_dir, "Test",  cfg.max_files)
+    train_records = scan_pt_split(pt_dir, "Train")
+    test_records  = scan_pt_split(pt_dir, "Test")
     classes       = collect_classes(train_records, test_records)
     class_to_idx  = {name: idx for idx, name in enumerate(classes)}
 

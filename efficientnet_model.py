@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time                          # used to measure per-epoch wall-clock time
+import time  # Used to measure per-epoch wall-clock time.
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -57,7 +57,6 @@ class EfficientNetConfig:
     weight_decay: float = 1e-4
     dropout: float = 0.3
     augment: bool = True
-    max_files: int | None = None
     # --- adaptive LR ---
     # When True, the learning rate is reduced by adaptive_lr_factor any time
     # val_acc drops relative to the previous epoch (delta_val_acc < 0).
@@ -91,7 +90,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train or run inference with an EfficientNet bird classifier.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # ── train sub-command ────────────────────────────────────────────────────
+    # Train sub-command.
     p = subparsers.add_parser("train", help="Train from generated .pt files")
     p.add_argument("--pt-data-dir", type=Path, default=Path("pt_data"))
     p.add_argument("--output-dir", type=Path, default=Path("model_artifacts"))
@@ -113,13 +112,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--lr-scheduler", default="cosine", choices=["cosine", "step", "none"],
                    help="LR schedule: cosine annealing, step decay every 1/3 of epochs, or none")
     p.add_argument("--label-smoothing", type=float, default=0.1,
-                   help="Cross-entropy label smoothing — prevents over-confidence on 200 classes")
+                   help="Cross-entropy label smoothing helps prevent over-confidence on 200 classes")
     p.add_argument("--weight-decay", type=float, default=1e-4,
                    help="AdamW L2 regularisation coefficient")
     p.add_argument("--dropout", type=float, default=0.3, help="Dropout before the classifier linear layer")
     p.add_argument("--augment", action=argparse.BooleanOptionalAction, default=True,
                    help="Random flip / rotate / erase applied every epoch")
-    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick debug runs")
     # adaptive LR flags
     p.add_argument(
         "--adaptive-lr", action=argparse.BooleanOptionalAction, default=False,
@@ -134,7 +132,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Multiplicative factor applied to all LRs when val_acc delta is negative (default 0.5 = halve LR)",
     )
 
-    # ── predict sub-command ──────────────────────────────────────────────────
+    # Predict sub-command.
     pred = subparsers.add_parser("predict", help="Predict bird class for one image")
     pred.add_argument("predict_arg1", nargs="?", type=Path)
     pred.add_argument("predict_arg2", nargs="?", type=Path)
@@ -191,7 +189,7 @@ def create_model(num_classes: int, variant: str, unfreeze_layers: int, dropout: 
     model_fn, weights = _VARIANTS[variant]
     model = model_fn(weights=weights)
 
-    # Freeze everything first — we only want to train selected layers
+    # Freeze everything first so only selected layers are trainable.
     for param in model.parameters():
         param.requires_grad = False
 
@@ -203,7 +201,7 @@ def create_model(num_classes: int, variant: str, unfreeze_layers: int, dropout: 
         for param in feature_blocks[-(i + 1)].parameters():
             param.requires_grad = True
 
-    # Replace classifier head (always trainable — these are brand-new weights)
+    # Replace classifier head (always trainable because these are new weights).
     in_features = model.classifier[-1].in_features
     model.classifier = nn.Sequential(
         nn.Dropout(p=dropout, inplace=True),
@@ -248,7 +246,6 @@ def run_train(args: argparse.Namespace) -> None:
         weight_decay=args.weight_decay,
         dropout=args.dropout,
         augment=args.augment,
-        max_files=args.max_files,
         adaptive_lr=args.adaptive_lr,
         adaptive_lr_factor=args.adaptive_lr_factor,
     )
@@ -261,12 +258,12 @@ def run_train(args: argparse.Namespace) -> None:
     out_dir.mkdir(parents=True, exist_ok=True)
 
     # Discover all .pt split files and derive the unified class list
-    train_records = scan_pt_split(pt_dir, "Train", cfg.max_files)
-    test_records  = scan_pt_split(pt_dir, "Test",  cfg.max_files)
+    train_records = scan_pt_split(pt_dir, "Train")
+    test_records  = scan_pt_split(pt_dir, "Test")
     classes       = collect_classes(train_records, test_records)
     class_to_idx  = {name: idx for idx, name in enumerate(classes)}
 
-    # LazyPtDataset loads one class file at a time — keeps RAM usage flat
+    # LazyPtDataset loads one class file at a time, which keeps RAM usage stable.
     aug           = _build_aug_transform() if cfg.augment else None
     train_dataset = LazyPtDataset(train_records, class_to_idx, transform=aug)
     test_dataset  = LazyPtDataset(test_records,  class_to_idx)
@@ -296,7 +293,7 @@ def run_train(args: argparse.Namespace) -> None:
     else:
         print("Adaptive LR: OFF (fixed schedule)")
 
-    # Label smoothing prevents the model from becoming overconfident — useful
+    # Label smoothing helps prevent overconfident predictions.
     # because we have 200 very similar-looking classes.
     criterion = nn.CrossEntropyLoss(label_smoothing=cfg.label_smoothing)
 
@@ -323,7 +320,7 @@ def run_train(args: argparse.Namespace) -> None:
         # Smoothly decays LR from initial to ~0 over all epochs
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.epochs)
     elif cfg.lr_scheduler == "step":
-        # Halves LR every (epochs // 3) steps — more abrupt than cosine
+        # Halves LR every (epochs // 3) steps, which is more abrupt than cosine.
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=max(1, cfg.epochs // 3), gamma=0.5)
 
     best_acc  = -1.0
@@ -391,7 +388,7 @@ def run_train(args: argparse.Namespace) -> None:
         val_acc_history.append(val_acc)
 
         # Delta is the change in validation accuracy vs the previous epoch.
-        # A negative delta means the model got worse — used by adaptive LR.
+        # A negative delta means the model got worse and can trigger adaptive LR.
         delta_str = "N/A"
         if prev_acc is not None:
             delta     = val_acc - prev_acc
@@ -468,7 +465,7 @@ def run_predict(args: argparse.Namespace) -> None:
     """Load a saved checkpoint and predict the bird species in one image.
 
     The checkpoint embeds all config (variant, dropout, class list) so you
-    don't need to pass any extra flags — just the image path.
+    do not need to pass any extra flags, just the image path.
     """
     checkpoint_path = resolve_checkpoint_path_with_globs(
         args.checkpoint_path,

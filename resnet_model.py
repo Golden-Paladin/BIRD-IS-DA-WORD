@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time                          # wall-clock timing for each epoch
+import time  # Wall-clock timing for each epoch.
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -46,7 +46,6 @@ class ResNetConfig:
     weight_decay: float = 1e-4
     dropout: float = 0.3
     augment: bool = True
-    max_files: int | None = None
     # --- adaptive LR ---
     # When True, all LR groups are multiplied by adaptive_lr_factor whenever
     # val_acc decreases compared to the previous epoch (delta_val_acc < 0).
@@ -80,7 +79,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     parser = argparse.ArgumentParser(description="Train or run inference with a ResNet bird classifier.")
     subparsers = parser.add_subparsers(dest="command", required=True)
 
-    # ── train sub-command ────────────────────────────────────────────────────
+    # Train sub-command.
     p = subparsers.add_parser("train", help="Train from generated .pt files")
     p.add_argument("--pt-data-dir", type=Path, default=Path("pt_data"))
     p.add_argument("--output-dir", type=Path, default=Path("model_artifacts"))
@@ -98,13 +97,12 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--lr-scheduler", default="cosine", choices=["cosine", "step", "none"],
                    help="cosine: smooth decay; step: halve every 1/3 epochs; none: fixed LR")
     p.add_argument("--label-smoothing", type=float, default=0.1,
-                   help="Softens targets — prevents overconfidence on 200 nearly-identical classes")
+                   help="Softens targets and helps prevent overconfidence on similar classes")
     p.add_argument("--weight-decay", type=float, default=1e-4,
                    help="AdamW L2 weight penalty")
     p.add_argument("--dropout", type=float, default=0.3, help="Dropout rate before final FC layer")
     p.add_argument("--augment", action=argparse.BooleanOptionalAction, default=True,
                    help="Enable on-the-fly random augmentation (flip, rotate, erase)")
-    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick smoke tests")
     # adaptive LR flags
     p.add_argument(
         "--adaptive-lr", action=argparse.BooleanOptionalAction, default=False,
@@ -119,7 +117,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Factor by which all LRs are scaled when delta_val_acc < 0 (default 0.5 = halve)",
     )
 
-    # ── predict sub-command ──────────────────────────────────────────────────
+    # Predict sub-command.
     pred = subparsers.add_parser("predict", help="Predict bird class for one image")
     pred.add_argument("predict_arg1", nargs="?", type=Path)
     pred.add_argument("predict_arg2", nargs="?", type=Path)
@@ -338,7 +336,6 @@ def run_train(args: argparse.Namespace) -> None:
         weight_decay=args.weight_decay,
         dropout=args.dropout,
         augment=args.augment,
-        max_files=args.max_files,
         adaptive_lr=args.adaptive_lr,
         adaptive_lr_factor=args.adaptive_lr_factor,
     )
@@ -353,8 +350,8 @@ def run_train(args: argparse.Namespace) -> None:
     out_dir = Path(cfg.output_dir)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    train_records = scan_pt_split(pt_dir, "Train", cfg.max_files)
-    test_records  = scan_pt_split(pt_dir, "Test",  cfg.max_files)
+    train_records = scan_pt_split(pt_dir, "Train")
+    test_records  = scan_pt_split(pt_dir, "Test")
     classes       = collect_classes(train_records, test_records)
     class_to_idx  = {name: idx for idx, name in enumerate(classes)}
 
@@ -402,7 +399,7 @@ def run_train(args: argparse.Namespace) -> None:
         # CosineAnnealingLR: smoothly reduces LR from initial value to ~0
         scheduler = torch.optim.lr_scheduler.CosineAnnealingLR(optimizer, T_max=cfg.epochs)
     elif cfg.lr_scheduler == "step":
-        # StepLR: halves every (epochs // 3) epochs — more abrupt step-down
+        # StepLR: halves every (epochs // 3) epochs with a more abrupt step-down.
         scheduler = torch.optim.lr_scheduler.StepLR(optimizer, step_size=max(1, cfg.epochs // 3), gamma=0.5)
 
     best_acc             = -1.0

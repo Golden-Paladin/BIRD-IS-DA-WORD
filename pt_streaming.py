@@ -10,7 +10,7 @@ from torch.utils.data import Dataset
 
 
 def _safe_torch_load(path: Path) -> dict:
-    # Keep compatibility with both new and older torch versions.
+    """Load a PT payload while staying compatible across torch versions."""
     try:
         return torch.load(path, map_location="cpu", weights_only=False)
     except TypeError:
@@ -19,12 +19,15 @@ def _safe_torch_load(path: Path) -> dict:
 
 @dataclass(frozen=True)
 class PtFileRecord:
+    """Metadata for one per-class `.pt` tensor file."""
+
     path: Path
     class_name: str
     num_samples: int
 
 
 def _infer_class_name(file_path: Path, split_name: str) -> str:
+    """Infer class name from `<class>_<split>.pt` when metadata is missing."""
     suffix = f"_{split_name}"
     stem = file_path.stem
     if stem.endswith(suffix):
@@ -32,10 +35,9 @@ def _infer_class_name(file_path: Path, split_name: str) -> str:
     return stem
 
 
-def scan_pt_split(pt_dir: Path, split_name: str, max_files: int | None = None) -> list[PtFileRecord]:
+def scan_pt_split(pt_dir: Path, split_name: str) -> list[PtFileRecord]:
+    """Scan one split directory and return valid PT file records."""
     files = sorted(pt_dir.glob(f"*_{split_name}.pt"))
-    if max_files is not None:
-        files = files[:max_files]
 
     if not files:
         raise FileNotFoundError(f"No files found for split '{split_name}' in {pt_dir}")
@@ -61,10 +63,13 @@ def scan_pt_split(pt_dir: Path, split_name: str, max_files: int | None = None) -
 
 
 def collect_classes(*record_groups: list[PtFileRecord]) -> list[str]:
+    """Return sorted class names from one or more record lists."""
     return sorted({record.class_name for group in record_groups for record in group})
 
 
 class LazyPtDataset(Dataset[tuple[torch.Tensor, int]]):
+    """Dataset that loads one PT file at a time to keep memory usage stable."""
+
     def __init__(
         self,
         records: list[PtFileRecord],
@@ -88,9 +93,11 @@ class LazyPtDataset(Dataset[tuple[torch.Tensor, int]]):
         self._cached_tensor: torch.Tensor | None = None
 
     def __len__(self) -> int:
+        """Return total samples across all PT files."""
         return self._cumulative_sizes[-1]
 
     def _load_tensor(self, file_path: Path) -> torch.Tensor:
+        """Load and cache one PT tensor payload by file path."""
         if self._cached_path != file_path or self._cached_tensor is None:
             payload = _safe_torch_load(file_path)
             self._cached_tensor = payload["X"].float()
@@ -101,6 +108,7 @@ class LazyPtDataset(Dataset[tuple[torch.Tensor, int]]):
         return cached_tensor
 
     def __getitem__(self, index: int) -> tuple[torch.Tensor, int]:
+        """Return one sample tensor and class index."""
         if index < 0:
             index += len(self)
         if index < 0 or index >= len(self):
