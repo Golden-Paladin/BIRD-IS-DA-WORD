@@ -114,7 +114,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--dropout", type=float, default=0.3, help="Dropout before the classifier linear layer")
     p.add_argument("--augment", action=argparse.BooleanOptionalAction, default=True,
                    help="Random flip / rotate / erase applied every epoch")
-    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick smoke tests")
+    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick debug runs")
     # adaptive LR flags
     p.add_argument(
         "--adaptive-lr", action=argparse.BooleanOptionalAction, default=False,

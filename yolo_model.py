@@ -55,7 +55,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     train_parser.add_argument("--batch-size", type=int, default=4)
     train_parser.add_argument("--epochs", type=int, default=3)
     train_parser.add_argument("--temp-data-dir", type=Path, default=Path("yolo_cls_data"))
-    train_parser.add_argument("--max-files", type=int, default=None, help="Optional limit for quick smoke tests")
+    train_parser.add_argument("--max-files", type=int, default=None, help="Optional limit for quick debug runs")
 
     predict_parser = subparsers.add_parser("predict", help="Predict bird class for one image")
     predict_parser.add_argument("image_path", nargs="?", type=Path)

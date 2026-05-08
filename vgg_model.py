@@ -3,7 +3,7 @@ from __future__ import annotations
 import argparse
 import json
 import sys
-import time                          # wall-clock timing for each epoch
+import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
 
@@ -98,7 +98,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--dropout", type=float, default=0.5, help="Dropout rate in the classifier (default 0.5)")
     p.add_argument("--augment", action=argparse.BooleanOptionalAction, default=True,
                    help="Random flip / rotate / erase applied every training epoch")
-    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick smoke tests")
+    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick debug runs")
     # adaptive LR flags
     p.add_argument(
         "--adaptive-lr", action=argparse.BooleanOptionalAction, default=False,

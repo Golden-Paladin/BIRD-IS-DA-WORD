@@ -99,7 +99,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--dropout", type=float, default=0.3, help="Dropout rate before final FC layer")
     p.add_argument("--augment", action=argparse.BooleanOptionalAction, default=True,
                    help="Enable on-the-fly random augmentation (flip, rotate, erase)")
-    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick smoke tests")
+    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick debug runs")
     # adaptive LR flags
     p.add_argument(
         "--adaptive-lr", action=argparse.BooleanOptionalAction, default=False,
