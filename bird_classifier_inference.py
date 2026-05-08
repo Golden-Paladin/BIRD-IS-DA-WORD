@@ -52,6 +52,33 @@ def resolve_checkpoint_path(
 
     searched = ", ".join(str(path) for path in candidates)
     raise FileNotFoundError(f"No checkpoint could be found. Searched: {searched}")
+
+
+def resolve_checkpoint_path_with_globs(
+    override_path: str | Path | None,
+    fallback_paths: list[str | Path],
+    fallback_globs: list[str],
+) -> Path:
+    """Resolve a checkpoint using exact candidates first, then glob patterns.
+
+    This is useful when checkpoint names contain hyper-parameter suffixes.
+    """
+    if override_path is not None:
+        return Path(override_path)
+
+    candidates = [Path(path) for path in fallback_paths]
+    for candidate in candidates:
+        if candidate.exists():
+            return candidate
+
+    for pattern in fallback_globs:
+        matches = sorted(Path().glob(pattern), key=lambda p: p.stat().st_mtime, reverse=True)
+        if matches:
+            return matches[0]
+
+    searched = ", ".join(str(path) for path in candidates)
+    globbed = ", ".join(fallback_globs)
+    raise FileNotFoundError(f"No checkpoint could be found. Searched exact paths: {searched}. Searched globs: {globbed}")
 def _build_model_from_checkpoint(checkpoint: dict) -> tuple[torch.nn.Module, list[str], int, str]:
     """Recreate the correct model architecture based on checkpoint metadata."""
     classes: list[str] = list(checkpoint["classes"])
@@ -127,8 +154,10 @@ def predict_bird_from_pil(
     image_size: int | None = None,
 ) -> tuple[str, float, int]:
     """Classify one RGB image/crop and return label, confidence, and class index."""
-    target_size = classifier.image_size if image_size is None else int(image_size)
-    transform = build_inference_transform(target_size)
+    target_size: int = int(classifier.image_size)
+    if image_size is not None:
+        target_size = int(image_size)
+    transform = build_inference_transform(int(target_size))
     x_tensor = transform(image.convert("RGB")).unsqueeze(0).to(classifier.device)
     with torch.no_grad():
         probabilities = torch.softmax(classifier.model(x_tensor), dim=1)

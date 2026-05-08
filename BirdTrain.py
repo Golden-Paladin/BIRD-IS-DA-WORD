@@ -43,7 +43,7 @@ def parse_args() -> argparse.Namespace:
         "--limit-per-class",
         type=int,
         default=None,
-        help="Optional cap used for quick debug runs.",
+        help="Optional cap used for quick smoke tests.",
     )
     parser.add_argument(
         "--batch-size",
@@ -54,7 +54,7 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument(
         "--prepare-training",
         action="store_true",
-        help="Load the generated .pt files back into memory and build DataLoaders (only recommended for small debug runs).",
+        help="Load the generated .pt files back into memory and build DataLoaders (only recommended for small smoke tests).",
     )
     return parser.parse_args()
 

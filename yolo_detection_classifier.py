@@ -11,11 +11,16 @@ import argparse
 import sys
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any
+from typing import Any, cast
 
 from PIL import Image, ImageDraw, ImageFont
 
-from bird_classifier_inference import load_bird_classifier, predict_bird_from_pil, resolve_checkpoint_path
+from bird_classifier_inference import (
+    LoadedBirdClassifier,
+    load_bird_classifier,
+    predict_bird_from_pil,
+    resolve_checkpoint_path_with_globs,
+)
 
 IMAGE_SUFFIXES = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
 
@@ -88,6 +93,12 @@ def add_common_args(parser: argparse.ArgumentParser) -> None:
         help=argparse.SUPPRESS,
     )
     parser.add_argument("--device", default=None, help=argparse.SUPPRESS)
+    parser.add_argument(
+        "--detector-only",
+        action=argparse.BooleanOptionalAction,
+        default=False,
+        help="Use YOLO detection only (no classifier handoff).",
+    )
 
 
 def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
@@ -97,7 +108,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
             "Pass one image or video path. YOLO will detect birds and the best EfficientNet checkpoint will classify them."
         )
     )
-    parser.add_argument("source", help="Image path, video path, or webcam index like 0")
+    parser.add_argument("arg1", help="Source path (image/video) or checkpoint path")
+    parser.add_argument("arg2", nargs="?", help="Optional source path when arg1 is a checkpoint path")
     parser.add_argument(
         "--output-path",
         type=Path,
@@ -105,7 +117,15 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
         help="Optional output image path. For videos this saves the best detected frame.",
     )
     add_common_args(parser)
-    return parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
+    args = parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
+
+    if args.arg2 is not None:
+        if args.classifier_checkpoint is None:
+            args.classifier_checkpoint = Path(args.arg1)
+        args.source = args.arg2
+    else:
+        args.source = args.arg1
+    return args
 
 
 def source_is_image(source: str) -> bool:
@@ -137,13 +157,16 @@ def get_cv2() -> Any:
 
 def build_config(args: argparse.Namespace) -> DetectionClassifierConfig:
     """Collect and validate shared args."""
-    checkpoint_path = resolve_checkpoint_path(
-        args.classifier_checkpoint,
-        [Path("model_artifacts") / "best_efficientnet_bird_classifier.pt"],
-    )
+    checkpoint_path = None
+    if not args.detector_only:
+        checkpoint_path = resolve_checkpoint_path_with_globs(
+            args.classifier_checkpoint,
+            [Path("model_artifacts") / "best_efficientnet_bird_classifier.pt"],
+            ["model_artifacts/best_efficientnet_bird_classifier*.pt"],
+        )
     cfg = DetectionClassifierConfig(
         detector_path=str(args.detector_path),
-        classifier_checkpoint=str(checkpoint_path),
+        classifier_checkpoint=str(checkpoint_path) if checkpoint_path is not None else "",
         detector_image_size=args.detector_image_size,
         classifier_image_size=args.classifier_image_size,
         conf_threshold=args.conf_threshold,
@@ -276,7 +299,7 @@ def run_image(args: argparse.Namespace) -> None:
     YOLO = get_yolo_class()
 
     detector = YOLO(cfg.detector_path)
-    classifier = load_bird_classifier(cfg.classifier_checkpoint, device=cfg.device)
+    classifier = None if args.detector_only else load_bird_classifier(cfg.classifier_checkpoint, device=cfg.device)
 
     bird_class_id = find_bird_class_id(detector)
     predict_kwargs: dict[str, Any] = {
@@ -301,12 +324,23 @@ def run_image(args: argparse.Namespace) -> None:
         image = image_file.convert("RGB")
 
     raw_boxes = extract_boxes(results[0], min_box_size=cfg.min_box_size)
-    detections = classify_detections(image, raw_boxes, cfg, classifier)
-
-    print(
-        f"Loaded classifier: {classifier.model_name or 'unknown'} | classes={len(classifier.classes)} | "
-        f"crop_size={cfg.classifier_image_size or classifier.image_size}"
-    )
+    if args.detector_only:
+        detections = [
+            ClassifiedDetection(
+                box=box,
+                detection_confidence=det_conf,
+                label="bird",
+                classifier_confidence=det_conf,
+            )
+            for box, det_conf in raw_boxes
+        ]
+        print("Detector-only mode: ON (no classifier handoff).")
+    else:
+        detections = classify_detections(image, raw_boxes, cfg, classifier)
+        print(
+            f"Loaded classifier: {classifier.model_name or 'unknown'} | classes={len(classifier.classes)} | "
+            f"crop_size={cfg.classifier_image_size or classifier.image_size}"
+        )
     print(f"Image: {args.source}")
 
     if not detections:
@@ -315,10 +349,13 @@ def run_image(args: argparse.Namespace) -> None:
         print(f"Detected {len(detections)} bird(s):")
         for idx, det in enumerate(detections, start=1):
             x1, y1, x2, y2 = det.box
-            print(
-                f"  [{idx}] {det.label} - classifier_conf={det.classifier_confidence:.4f} - "
-                f"detector_conf={det.detection_confidence:.4f} - box=({x1}, {y1}, {x2}, {y2})"
-            )
+            if args.detector_only:
+                print(f"  [{idx}] detector_conf={det.detection_confidence:.4f} - box=({x1}, {y1}, {x2}, {y2})")
+            else:
+                print(
+                    f"  [{idx}] {det.label} - classifier_conf={det.classifier_confidence:.4f} - "
+                    f"detector_conf={det.detection_confidence:.4f} - box=({x1}, {y1}, {x2}, {y2})"
+                )
 
     if args.output_path is not None:
         annotated = annotate_image(image, detections)
@@ -340,7 +377,7 @@ def run_video(args: argparse.Namespace) -> None:
     cv2 = get_cv2()
 
     detector = YOLO(cfg.detector_path)
-    classifier = load_bird_classifier(cfg.classifier_checkpoint, device=cfg.device)
+    classifier = None if args.detector_only else load_bird_classifier(cfg.classifier_checkpoint, device=cfg.device)
 
     bird_class_id = find_bird_class_id(detector)
     detection_classes: list[int] | None = None
@@ -350,10 +387,13 @@ def run_video(args: argparse.Namespace) -> None:
         detection_classes = [bird_class_id]
         print(f"Filtering detections to YOLO class 'bird' (class_id={bird_class_id}).")
 
-    print(
-        f"Loaded classifier: {classifier.model_name or 'unknown'} | classes={len(classifier.classes)} | "
-        f"crop_size={cfg.classifier_image_size or classifier.image_size}"
-    )
+    if args.detector_only:
+        print("Detector-only mode: ON (no classifier handoff).")
+    else:
+        print(
+            f"Loaded classifier: {classifier.model_name or 'unknown'} | classes={len(classifier.classes)} | "
+            f"crop_size={cfg.classifier_image_size or classifier.image_size}"
+        )
 
     source = resolve_video_source(args.source)
     capture = cv2.VideoCapture(source)
@@ -414,14 +454,27 @@ def run_video(args: argparse.Namespace) -> None:
         return
 
     crop_image = best_frame_rgb.crop(clamped)
-    label, cls_conf, _ = predict_bird_from_pil(crop_image, classifier, image_size=cfg.classifier_image_size)
+    if args.detector_only:
+        label = "bird"
+        cls_conf = best_conf
+    else:
+        if classifier is None:
+            raise RuntimeError("Classifier was not loaded for handoff mode.")
+        label, cls_conf, _ = predict_bird_from_pil(
+            crop_image,
+            cast(LoadedBirdClassifier, classifier),
+            image_size=cfg.classifier_image_size,
+        )
     x1, y1, x2, y2 = best_box
     print(
         f"Best detection: frame={best_frame_idx} box=({x1}, {y1}, {x2}, {y2}) "
         f"detector_conf={best_conf:.4f}"
     )
-    print(f"Predicted bird: {label}")
-    print(f"Classifier confidence: {cls_conf:.4f}")
+    if args.detector_only:
+        print("Detector-only result: bird")
+    else:
+        print(f"Predicted bird: {label}")
+        print(f"Classifier confidence: {cls_conf:.4f}")
 
     if args.output_path is not None:
         annotated = annotate_image(

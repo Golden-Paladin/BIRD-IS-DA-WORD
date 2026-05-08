@@ -14,13 +14,14 @@ from PIL import Image
 from torch.utils.data import DataLoader
 from torchvision import models, transforms
 
-from bird_classifier_inference import load_bird_classifier, predict_bird_from_pil, resolve_checkpoint_path
+from bird_classifier_inference import (
+    load_bird_classifier,
+    predict_bird_from_pil,
+    resolve_checkpoint_path_with_globs,
+)
 from classification_metrics import ClassificationMetrics, compute_classification_metrics
 from pt_streaming import LazyPtDataset, collect_classes, scan_pt_split
-
-# ImageNet normalisation constants — VGG-16 pretrained weights require these.
-MEAN = [0.485, 0.456, 0.406]
-STD  = [0.229, 0.224, 0.225]
+from training_plots import save_error_curve_png
 
 
 @dataclass
@@ -64,6 +65,10 @@ def normalize_cli_args(argv: list[str]) -> list[str]:
         return argv
     if argv[0] == "--image-path":
         return ["predict", *argv]
+    if argv[0] == "--checkpoint-path":
+        return ["predict", *argv]
+    if len(argv) >= 2 and Path(argv[0]).suffix.lower() == ".pt":
+        return ["predict", *argv]
     if Path(argv[0]).suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}:
         return ["predict", argv[0], *argv[1:]]
     return ["train", *argv]
@@ -98,7 +103,7 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     p.add_argument("--dropout", type=float, default=0.5, help="Dropout rate in the classifier (default 0.5)")
     p.add_argument("--augment", action=argparse.BooleanOptionalAction, default=True,
                    help="Random flip / rotate / erase applied every training epoch")
-    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick debug runs")
+    p.add_argument("--max-files", type=int, default=None, help="Optional cap for quick smoke tests")
     # adaptive LR flags
     p.add_argument(
         "--adaptive-lr", action=argparse.BooleanOptionalAction, default=False,
@@ -115,7 +120,8 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     # ── predict sub-command ──────────────────────────────────────────────────
     pred = subparsers.add_parser("predict", help="Predict bird class for one image")
-    pred.add_argument("image_path", nargs="?", type=Path)
+    pred.add_argument("predict_arg1", nargs="?", type=Path)
+    pred.add_argument("predict_arg2", nargs="?", type=Path)
     pred.add_argument("--image-path", dest="image_path_flag", type=Path, default=None, help=argparse.SUPPRESS)
     pred.add_argument(
         "--checkpoint-path", type=Path, default=None,
@@ -124,7 +130,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     args = parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
     if args.command == "predict":
-        args.image_path = args.image_path or args.image_path_flag
+        image_suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
+        args.image_path = args.image_path_flag
+
+        if args.image_path is None:
+            a1 = args.predict_arg1
+            a2 = args.predict_arg2
+            if a1 is not None and a2 is not None:
+                if a1.suffix.lower() == ".pt" and a2.suffix.lower() in image_suffixes:
+                    args.checkpoint_path = args.checkpoint_path or a1
+                    args.image_path = a2
+                elif a2.suffix.lower() == ".pt" and a1.suffix.lower() in image_suffixes:
+                    args.checkpoint_path = args.checkpoint_path or a2
+                    args.image_path = a1
+                else:
+                    args.checkpoint_path = args.checkpoint_path or a1
+                    args.image_path = a2
+            else:
+                args.image_path = a1
+
         if args.image_path is None:
             parser.error("predict requires an image path")
     return args
@@ -290,6 +314,8 @@ def run_train(args: argparse.Namespace) -> None:
     prev_acc             = None   # previous epoch val_acc for computing delta
     best_checkpoint_path = out_dir / f"best_{cfg.checkpoint_name}"
     best_metrics: ClassificationMetrics | None = None
+    train_acc_history: list[float] = []
+    val_acc_history: list[float] = []
 
     for epoch in range(cfg.epochs):
         epoch_start = time.perf_counter()
@@ -344,6 +370,8 @@ def run_train(args: argparse.Namespace) -> None:
         avg_loss  = running_loss / max(len(train_loader), 1)
         train_acc = train_correct / max(train_total, 1)
         val_acc   = correct / max(total, 1)
+        train_acc_history.append(train_acc)
+        val_acc_history.append(val_acc)
 
         # delta_val_acc: positive = improvement, negative = regression
         delta_str = "N/A"
@@ -392,6 +420,13 @@ def run_train(args: argparse.Namespace) -> None:
     )
     config_path = out_dir / "vgg_config.json"
     config_path.write_text(json.dumps(asdict(cfg), indent=2), encoding="utf-8")
+    plot_path = out_dir / "vgg_error_vs_epochs.png"
+    save_error_curve_png(
+        plot_path,
+        train_acc_history=train_acc_history,
+        val_acc_history=val_acc_history,
+        title="VGG Error vs Epoch",
+    )
     print(f"\nBest val_acc: {best_acc:.4f}  →  {best_checkpoint_path}")
     if best_metrics is not None:
         print(
@@ -408,6 +443,7 @@ def run_train(args: argparse.Namespace) -> None:
         )
     print(f"Final checkpoint: {checkpoint_path}")
     print(f"Config: {config_path}")
+    print(f"Error curve PNG: {plot_path}")
 
 
 def run_predict(args: argparse.Namespace) -> None:
@@ -416,11 +452,14 @@ def run_predict(args: argparse.Namespace) -> None:
     The checkpoint stores the class list and config so no extra flags are
     needed beyond the image path.
     """
-    checkpoint_path = resolve_checkpoint_path(
+    checkpoint_path = resolve_checkpoint_path_with_globs(
         args.checkpoint_path,
         [
-            Path("model_artifacts") / "best_vgg_bird_classifier.pt",
             Path("model_artifacts") / "vgg_bird_classifier.pt",
+        ],
+        [
+            "model_artifacts/best_vgg_bird_classifier*.pt",
+            "model_artifacts/vgg_bird_classifier*.pt",
         ],
     )
     classifier = load_bird_classifier(checkpoint_path)

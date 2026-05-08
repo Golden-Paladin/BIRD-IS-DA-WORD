@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import shutil
 import sys
@@ -12,6 +13,7 @@ import torch
 from torchvision import transforms
 
 from classification_metrics import compute_classification_metrics
+from training_plots import save_error_curve_png
 
 MEAN = torch.tensor([0.485, 0.456, 0.406]).view(3, 1, 1)
 STD = torch.tensor([0.229, 0.224, 0.225]).view(3, 1, 1)
@@ -37,6 +39,10 @@ def normalize_cli_args(argv: list[str]) -> list[str]:
         return argv
     if argv[0] == "--image-path":
         return ["predict", *argv]
+    if argv[0] == "--checkpoint-path":
+        return ["predict", *argv]
+    if len(argv) >= 2 and Path(argv[0]).suffix.lower() == ".pt":
+        return ["predict", *argv]
     if Path(argv[0]).suffix.lower() in {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}:
         return ["predict", argv[0], *argv[1:]]
     return ["train", *argv]
@@ -55,10 +61,11 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
     train_parser.add_argument("--batch-size", type=int, default=4)
     train_parser.add_argument("--epochs", type=int, default=3)
     train_parser.add_argument("--temp-data-dir", type=Path, default=Path("yolo_cls_data"))
-    train_parser.add_argument("--max-files", type=int, default=None, help="Optional limit for quick debug runs")
+    train_parser.add_argument("--max-files", type=int, default=None, help="Optional limit for quick smoke tests")
 
     predict_parser = subparsers.add_parser("predict", help="Predict bird class for one image")
-    predict_parser.add_argument("image_path", nargs="?", type=Path)
+    predict_parser.add_argument("predict_arg1", nargs="?", type=Path)
+    predict_parser.add_argument("predict_arg2", nargs="?", type=Path)
     predict_parser.add_argument("--image-path", dest="image_path_flag", type=Path, default=None, help=argparse.SUPPRESS)
     predict_parser.add_argument(
         "--checkpoint-path",
@@ -69,7 +76,25 @@ def parse_args(argv: list[str] | None = None) -> argparse.Namespace:
 
     args = parser.parse_args(normalize_cli_args(sys.argv[1:] if argv is None else argv))
     if args.command == "predict":
-        args.image_path = args.image_path or args.image_path_flag
+        image_suffixes = {".jpg", ".jpeg", ".png", ".bmp", ".webp", ".tif", ".tiff"}
+        args.image_path = args.image_path_flag
+
+        if args.image_path is None:
+            a1 = args.predict_arg1
+            a2 = args.predict_arg2
+            if a1 is not None and a2 is not None:
+                if a1.suffix.lower() == ".pt" and a2.suffix.lower() in image_suffixes:
+                    args.checkpoint_path = args.checkpoint_path or a1
+                    args.image_path = a2
+                elif a2.suffix.lower() == ".pt" and a1.suffix.lower() in image_suffixes:
+                    args.checkpoint_path = args.checkpoint_path or a2
+                    args.image_path = a1
+                else:
+                    args.checkpoint_path = args.checkpoint_path or a1
+                    args.image_path = a2
+            else:
+                args.image_path = a1
+
         if args.image_path is None:
             parser.error("predict requires an image path")
     return args
@@ -151,6 +176,54 @@ def evaluate_yolo_classifier(model: Any, val_root: Path, image_size: int) -> dic
     return compute_classification_metrics(targets, predictions, len(class_names)).to_dict()
 
 
+def _pick_first_available(row: dict[str, str], candidates: list[str]) -> float | None:
+    """Return the first numeric value found under the candidate column names."""
+    for key in candidates:
+        raw = row.get(key)
+        if raw in {None, "", "nan", "NaN"}:
+            continue
+        try:
+            return float(raw)
+        except ValueError:
+            continue
+    return None
+
+
+def _extract_yolo_acc_history(results_csv: Path) -> tuple[list[float | None], list[float | None]]:
+    """Extract per-epoch train/validation accuracy histories from YOLO results.csv.
+
+    Column names vary a bit by Ultralytics version, so we search several
+    known alternatives for train/val top-1 accuracy.
+    """
+    if not results_csv.exists():
+        return [], []
+
+    train_candidates = [
+        "train/acc",
+        "train/top1_acc",
+        "train/accuracy_top1",
+        "train/cls_acc",
+        "metrics/train_top1",
+    ]
+    val_candidates = [
+        "metrics/accuracy_top1",
+        "val/acc",
+        "val/top1_acc",
+        "val/accuracy_top1",
+        "metrics/val_top1",
+    ]
+
+    train_history: list[float | None] = []
+    val_history: list[float | None] = []
+    with results_csv.open("r", encoding="utf-8", newline="") as file_obj:
+        reader = csv.DictReader(file_obj)
+        for row in reader:
+            train_history.append(_pick_first_available(row, train_candidates))
+            val_history.append(_pick_first_available(row, val_candidates))
+
+    return train_history, val_history
+
+
 def run_train(args: argparse.Namespace) -> None:
     YOLO = get_yolo_class()
     cfg = YOLOConfig(
@@ -211,6 +284,26 @@ def run_train(args: argparse.Namespace) -> None:
     if best_path is None or not best_path.exists():
         raise FileNotFoundError("YOLO training finished but best.pt could not be located.")
 
+    trainer_save_dir = None
+    if trainer is not None and hasattr(trainer, "save_dir"):
+        trainer_save_dir = Path(str(trainer.save_dir))
+    elif best_path is not None:
+        trainer_save_dir = best_path.parent.parent
+
+    if trainer_save_dir is not None:
+        train_acc_history, val_acc_history = _extract_yolo_acc_history(trainer_save_dir / "results.csv")
+        if val_acc_history:
+            plot_path = out_dir / "yolo_error_vs_epochs.png"
+            save_error_curve_png(
+                plot_path,
+                train_acc_history=train_acc_history,
+                val_acc_history=val_acc_history,
+                title="YOLO Error vs Epoch",
+            )
+            print(f"Error curve PNG: {plot_path}")
+        else:
+            print("Could not extract epoch accuracy history from YOLO results.csv; skipping error curve PNG.")
+
     final_path = out_dir / cfg.checkpoint_name
     shutil.copy2(best_path, final_path)
 
@@ -240,9 +333,17 @@ def run_train(args: argparse.Namespace) -> None:
 
 def run_predict(args: argparse.Namespace) -> None:
     YOLO = get_yolo_class()
-    checkpoint_path = Path(args.checkpoint_path) if args.checkpoint_path is not None else (
-        Path("model_artifacts") / "yolo_bird_classifier.pt"
-    )
+    if args.checkpoint_path is not None:
+        checkpoint_path = Path(args.checkpoint_path)
+    else:
+        exact = Path("model_artifacts") / "yolo_bird_classifier.pt"
+        if exact.exists():
+            checkpoint_path = exact
+        else:
+            matches = sorted(Path().glob("model_artifacts/yolo_bird_classifier*.pt"), key=lambda p: p.stat().st_mtime, reverse=True)
+            if not matches:
+                raise FileNotFoundError("No YOLO checkpoint found. Expected model_artifacts/yolo_bird_classifier.pt")
+            checkpoint_path = matches[0]
     model = YOLO(str(checkpoint_path))
     results = model.predict(source=str(args.image_path), imgsz=224, verbose=False)
     if not results:

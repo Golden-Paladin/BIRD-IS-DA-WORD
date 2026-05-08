@@ -178,9 +178,69 @@ Epoch 12/15 - loss: 1.2770 - train_acc: 0.9102 - val_acc: 0.7810 - delta_val_acc
 
 
 
+
+
+
+
+FINAL MODELS ---------------------------------------------------------------------------------------------
+
 python .\yolo_model.py train --image-size 640 --epochs 25 --batch-size 8
 Best model metrics (weighted) - precision: 0.3409 - recall: 0.3020 - f1score: 0.2795
 Best model metrics (macro) - precision: 0.3417 - recall: 0.3023 - f1score: 0.2801
+
+
+
+python .\efficientnet_model.py train --unfreeze-layers 25 --epochs 10 --weight-decay 1e-3 --dropout .3 --batch-size 32 --learning-rate 1e-2 --adaptive-lr --adaptive-lr-factor 0.5
+Epoch 1/10 - loss: 3.5780 - train_acc: 0.2873 - val_acc: 0.5358 - delta_val_acc: N/A [best: 0.5358] - time: train=108.1s val=2.8s total=111.1s
+Epoch 2/10 - loss: 2.2996 - train_acc: 0.5895 - val_acc: 0.6344 - delta_val_acc: +0.0986 [best: 0.6344] - time: train=107.6s val=2.9s total=110.5s
+Epoch 3/10 - loss: 1.9145 - train_acc: 0.7097 - val_acc: 0.7161 - delta_val_acc: +0.0817 [best: 0.7161] - time: train=108.6s val=2.9s total=111.5s
+Epoch 4/10 - loss: 1.6494 - train_acc: 0.7973 - val_acc: 0.7367 - delta_val_acc: +0.0206 [best: 0.7367] - time: train=122.4s val=2.9s total=125.4s
+Epoch 5/10 - loss: 1.4592 - train_acc: 0.8612 - val_acc: 0.7742 - delta_val_acc: +0.0375 [best: 0.7742] - time: train=107.8s val=2.8s total=110.7s
+Epoch 6/10 - loss: 1.3127 - train_acc: 0.9136 - val_acc: 0.7881 - delta_val_acc: +0.0139 [best: 0.7881] - time: train=107.4s val=2.9s total=110.4s
+Epoch 7/10 - loss: 1.2049 - train_acc: 0.9430 - val_acc: 0.8104 - delta_val_acc: +0.0223 [best: 0.8104] - time: train=107.6s val=2.9s total=110.7s
+Epoch 8/10 - loss: 1.1307 - train_acc: 0.9664 - val_acc: 0.8248 - delta_val_acc: +0.0143 [best: 0.8248] - time: train=107.7s val=3.0s total=110.7s
+Epoch 9/10 - loss: 1.0911 - train_acc: 0.9771 - val_acc: 0.8286 - delta_val_acc: +0.0038 [best: 0.8286] - time: train=108.6s val=3.0s total=111.7s
+Epoch 10/10 - loss: 1.0817 - train_acc: 0.9791 - val_acc: 0.8290 - delta_val_acc: +0.0004 [best: 0.8290] - time: train=108.9s val=3.0s total=111.9s
+Best val_acc: 0.8290  →  model_artifacts\best_efficientnet_bird_classifier.pt
+Best model metrics (weighted) - precision: 0.8402 - recall: 0.8290 - f1score: 0.8282
+Best model metrics (macro) - precision: 0.8407 - recall: 0.8293 - f1score: 0.8286
+
+
+python .\resnet_model.py --batch-size 64 --unfreeze-layers 15 --epochs 10 --learning-rate 5e-4 --dropout .3 --weight-decay 1e-3 --adaptive-lr --adaptive-lr-factor .5
+Epoch 1/10 - loss: 4.9504 - train_acc: 0.0829 - val_acc: 0.2738 - delta_val_acc: N/A [best: 0.2738] - time: train=122.0s val=4.4s total=126.5s
+Epoch 2/10 - loss: 4.0165 - train_acc: 0.3061 - val_acc: 0.4419 - delta_val_acc: +0.1681 [best: 0.4419] - time: train=135.3s val=4.4s total=139.9s
+Epoch 3/10 - loss: 3.3562 - train_acc: 0.4671 - val_acc: 0.5455 - delta_val_acc: +0.1036 [best: 0.5455] - time: train=132.2s val=6.4s total=138.8s
+Epoch 4/10 - loss: 2.8812 - train_acc: 0.5771 - val_acc: 0.6293 - delta_val_acc: +0.0838 [best: 0.6293] - time: train=136.1s val=4.9s total=141.1s
+Epoch 5/10 - loss: 2.5294 - train_acc: 0.6629 - val_acc: 0.6879 - delta_val_acc: +0.0586 [best: 0.6879] - time: train=156.4s val=4.3s total=160.9s
+Epoch 6/10 - loss: 2.2883 - train_acc: 0.7133 - val_acc: 0.7060 - delta_val_acc: +0.0181 [best: 0.7060] - time: train=128.6s val=4.4s total=133.1s
+Epoch 7/10 - loss: 2.1159 - train_acc: 0.7526 - val_acc: 0.7211 - delta_val_acc: +0.0152 [best: 0.7211] - time: train=128.3s val=4.4s total=132.9s
+Epoch 8/10 - loss: 2.0102 - train_acc: 0.7778 - val_acc: 0.7359 - delta_val_acc: +0.0147 [best: 0.7359] - time: train=126.5s val=4.6s total=131.3s
+Epoch 9/10 - loss: 1.9533 - train_acc: 0.7913 - val_acc: 0.7372 - delta_val_acc: +0.0013 [best: 0.7372] - time: train=128.2s val=4.3s total=132.6s
+Epoch 10/10 - loss: 1.9176 - train_acc: 0.7972 - val_acc: 0.7372 - delta_val_acc: +0.0000 [best: 0.7372] - time: train=116.0s val=4.3s total=120.3s
+Best val_acc: 0.7372  →  model_artifacts\best_resnet_bird_classifier_u15_ep10_bs64_img224.pt
+Best model metrics (weighted) - precision: 0.7493 - recall: 0.7372 - f1score: 0.7275
+Best model metrics (macro) - precision: 0.7497 - recall: 0.7365 - f1score: 0.7273
+
+
+
+python .\vgg_model.py train --unfreeze-layers 2 --epochs 10 --batch-size 8
+Epoch 1/10 - loss: 4.8800 - train_acc: 0.0363 - val_acc: 0.0906 - delta_val_acc: N/A [best: 0.0906] - time: train=152.2s val=7.6s total=160.7s
+Epoch 2/10 - loss: 4.0537 - train_acc: 0.1304 - val_acc: 0.2195 - delta_val_acc: +0.1289 [best: 0.2195] - time: train=150.7s val=7.8s total=159.8s
+Epoch 3/10 - loss: 3.4568 - train_acc: 0.2560 - val_acc: 0.3277 - delta_val_acc: +0.1083 [best: 0.3277] - time: train=150.4s val=7.5s total=158.8s
+Epoch 4/10 - loss: 3.0034 - train_acc: 0.3736 - val_acc: 0.4297 - delta_val_acc: +0.1019 [best: 0.4297] - time: train=147.8s val=7.5s total=156.2s
+Epoch 5/10 - loss: 2.6454 - train_acc: 0.4830 - val_acc: 0.5093 - delta_val_acc: +0.0796 [best: 0.5093] - time: train=147.6s val=7.5s total=156.1s
+Epoch 6/10 - loss: 2.3845 - train_acc: 0.5622 - val_acc: 0.5501 - delta_val_acc: +0.0409 [best: 0.5501] - time: train=147.7s val=7.5s total=156.2s
+Epoch 7/10 - loss: 2.1377 - train_acc: 0.6474 - val_acc: 0.5741 - delta_val_acc: +0.0240 [best: 0.5741] - time: train=149.1s val=7.5s total=157.6s
+Epoch 8/10 - loss: 1.9546 - train_acc: 0.7149 - val_acc: 0.6045 - delta_val_acc: +0.0303 [best: 0.6045] - time: train=154.7s val=7.8s total=163.5s
+Epoch 9/10 - loss: 1.8476 - train_acc: 0.7506 - val_acc: 0.6137 - delta_val_acc: +0.0093 [best: 0.6137] - time: train=151.2s val=7.8s total=160.0s
+Epoch 10/10 - loss: 1.7999 - train_acc: 0.7660 - val_acc: 0.6243 - delta_val_acc: +0.0105 [best: 0.6243] - time: train=149.9s val=7.5s total=158.4s
+Best val_acc: 0.6243  →  model_artifacts\best_vgg_bird_classifier.pt
+Best model metrics (weighted) - precision: 0.6383 - recall: 0.6243 - f1score: 0.6214
+Best model metrics (macro) - precision: 0.6388 - recall: 0.6246 - f1score: 0.6219
+
+
+python .\yolo_model.py train --image-size 640 --epochs 25 --batch-size 8
+
 
 
 

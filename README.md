@@ -1,13 +1,11 @@
-# Bird Classification From `.pt` Data
+# Bird Is Da Word — Demo Guide
 
-This project has two main ways to run bird predictions:
-
-- **Base classifiers**: `efficientnet_model.py`, `resnet_model.py`, `vgg_model.py`
-- **YOLO**: `yolo_model.py` and `yolo_detection_classifier.py`
+A multi-model bird species classifier that can identify **200 bird species** from a single image or video.
+Pre-trained checkpoints are included in `model_artifacts/` so you can run predictions right away — no training required.
 
 ---
 
-## Install
+## 1. Install
 
 ```powershell
 pip install -r requirements.txt
@@ -15,71 +13,24 @@ pip install -r requirements.txt
 
 ---
 
-## Prepare data
+## 2. Run a Prediction
 
-Expected dataset layout:
+Pick any bird photo and pass it to one of the scripts below.
+Each script auto-loads the best available checkpoint from `model_artifacts/`.
 
-```text
-<dataset root>/
-  Train/
-    <bird_name>/
-      *.jpg
-  Test/
-    <bird_name>/
-      *.jpg
-```
-
-Put the dataset root path into `dataPath.txt`, then run:
+For all base classifier scripts, prediction supports both forms:
 
 ```powershell
-python .\BirdTrain.py
+# Default (auto-picks best checkpoint)
+python .\efficientnet_model.py "C:\path\to\bird.jpg"
+
+# Explicit model/checkpoint as first argument
+python .\efficientnet_model.py ".\model_artifacts\best_efficientnet_bird_classifier.pt" "C:\path\to\bird.jpg"
 ```
 
-This creates class tensors in `pt_data/`.
+If you provide two positional arguments, the first is treated as the model/checkpoint path and the second as the image path.
 
----
-
-## Train models
-
-### EfficientNet
-
-```powershell
-python .\efficientnet_model.py train --unfreeze-layers 5 --epochs 15 --batch-size 128 --learning-rate 5e-3
-```
-
-### ResNet
-
-```powershell
-python .\resnet_model.py train --unfreeze-layers 10 --epochs 10 --batch-size 32 --learning-rate 5e-4 --dropout .4 --weight-decay 1e-3
-```
-
-### VGG
-
-```powershell
-python .\vgg_model.py train --unfreeze-layers 2 --epochs 10 --batch-size 2
-```
-
-### YOLO classification
-
-```powershell
-python .\yolo_model.py train --image-size 224 --epochs 10 --batch-size 8
-```
-
-Training output includes:
-
-- `train_acc`
-- `val_acc`
-- `delta_val_acc`
-- epoch timing
-- best-checkpoint weighted / macro precision, recall, and F1
-
----
-
-## Run the base models
-
-Just pass a picture path.
-
-### EfficientNet
+### EfficientNet *(recommended — best accuracy)*
 
 ```powershell
 python .\efficientnet_model.py "C:\path\to\bird.jpg"
@@ -97,85 +48,178 @@ python .\resnet_model.py "C:\path\to\bird.jpg"
 python .\vgg_model.py "C:\path\to\bird.jpg"
 ```
 
-Each script prints:
-
-- predicted bird name
-- confidence
-- checkpoint used
-
-By default, inference uses the best available checkpoint for that model if it exists.
-
----
-
-## Run YOLO
-
-## 1) Direct YOLO classification
-
-For a single image:
+### YOLO classifier
 
 ```powershell
 python .\yolo_model.py "C:\path\to\bird.jpg"
 ```
 
-This predicts the bird species directly with the YOLO classification model.
+Every script prints the same three things:
 
-## 2) YOLO detection + base classifier
+```
+Predicted bird: American_Goldfinch
+Confidence:     0.9732
+Checkpoint:     model_artifacts\best_efficientnet_bird_classifier.pt
+```
 
-Script: `yolo_detection_classifier.py`
+---
 
-This uses YOLO to find bird boxes, then sends the crop to the best EfficientNet checkpoint by default.
+## 3. YOLO Detection + Classifier Pipeline
 
-### If source is an image
+`yolo_detection_classifier.py` first runs **object detection** to find the bird in the frame,
+crops the bounding box, and then hands the crop to EfficientNet for species classification.
+This is useful when the bird is not centered or takes up only a small part of the frame.
+
+### Image
 
 ```powershell
 python .\yolo_detection_classifier.py "C:\path\to\bird.jpg"
 ```
 
-Optional annotated output image:
+Save an annotated copy of the result:
 
 ```powershell
 python .\yolo_detection_classifier.py "C:\path\to\bird.jpg" --output-path ".\runs\annotated_bird.jpg"
 ```
 
-### If source is a video
+### Video
 
 ```powershell
 python .\yolo_detection_classifier.py "C:\path\to\birds.mov"
 ```
 
-Video mode is simple:
+Video mode scans every frame, picks the single highest-confidence bird box,
+classifies that crop, and prints the final species guess.
 
-- it scans the full video,
-- finds the **single best bird box** from YOLO,
-- classifies that one crop once,
-- prints the final guess.
-
-Optional annotated output of the best frame:
+### Detector-only mode (bounding boxes, no classification)
 
 ```powershell
-python .\yolo_detection_classifier.py "C:\path\to\birds.mov" --output-path ".\runs\best_frame.jpg"
-```
-
-If you want to override the default checkpoint:
-
-```powershell
-python .\yolo_detection_classifier.py "C:\path\to\birds.mov" --checkpoint-path ".\model_artifacts\best_resnet_bird_classifier_u20_ep10_bs32_img224.pt"
+python .\yolo_detection_classifier.py "C:\path\to\bird.jpg" --detector-only
 ```
 
 ---
 
-## Files to keep
+## 4. Use a Specific Checkpoint
 
-Keep:
+All scripts accept an explicit checkpoint as the first argument:
 
-- `model_artifacts/`
-- `pt_data/`
-- `yolo26n.pt`
-- `yolov8n-cls.pt`
+```powershell
+python .\efficientnet_model.py "C:\path\to\checkpoint.pt" "C:\path\to\bird.jpg"
+python .\yolo_detection_classifier.py "C:\path\to\birds.mov" --checkpoint-path ".\model_artifacts\best_resnet_bird_classifier_u15_ep10_bs64_img224.pt"
+```
 
-Safe to delete:
+---
 
-- `__pycache__/`
-- `runs/`
-- `yolo_cls_data/`
+## Files You Need
 
+| Path | Purpose |
+|------|---------|
+| `model_artifacts/` | Trained checkpoints (`.pt`) and config JSONs |
+| `yolo26n.pt` | YOLO detection backbone |
+| `yolov8n-cls.pt` | YOLO classification backbone |
+| `pt_data/` | Pre-processed tensor files (only needed to retrain) |
+
+Safe to delete: `__pycache__/`, `runs/`, `yolo_cls_data/`
+
+---
+
+---
+
+## Architecture & Model Details
+
+### Dataset
+
+- **200 bird species**, split into `Train/` and `Test/` folders per class.
+- Images are pre-processed once by `BirdTrain.py` into per-class `.pt` tensor files stored in `pt_data/`.
+  `LazyPtDataset` loads one class file at a time during training, keeping RAM usage flat regardless of dataset size.
+
+---
+
+### EfficientNet (`efficientnet_model.py`)
+
+| Detail | Value |
+|--------|-------|
+| Backbone | EfficientNet-B2 (default) — also supports B0, B1, B3 |
+| Pretrained on | ImageNet-1K |
+| Parameters | ~9.1 M (B2); B0 ≈ 5.3 M → B3 ≈ 12.2 M |
+| Head | `Dropout → Linear(num_classes)` |
+| Fine-tuning strategy | Freeze all backbone layers, then selectively unfreeze the last N feature blocks (`--unfreeze-layers`) |
+| Optimizer | AdamW with differential LR (backbone gets `lr × backbone_lr_multiplier`) |
+| LR schedule | Cosine annealing (default), step decay, or none |
+| Regularisation | Label smoothing (0.1), weight decay, dropout |
+| Augmentation | Random horizontal/vertical flip, rotation ±15°, random erasing |
+| Adaptive LR | Optional — halves all LR groups whenever `val_acc` drops vs the previous epoch |
+
+---
+
+### ResNet (`resnet_model.py`)
+
+| Detail | Value |
+|--------|-------|
+| Backbone | ResNet-50, pretrained on ImageNet-1K |
+| Fine-tuning strategy | Layer-group unfreezing — `--unfreeze-layers 1` exposes `layer4 + fc`; each additional level adds the next residual group going backwards |
+| Head | `Dropout → Linear(num_classes)` replacing the original FC layer |
+| Optimizer | AdamW with differential LR |
+| Other | Same label smoothing, cosine scheduler, and adaptive LR options as EfficientNet |
+
+---
+
+### VGG (`vgg_model.py`)
+
+| Detail | Value |
+|--------|-------|
+| Backbone | VGG-16, pretrained on ImageNet-1K |
+| Fine-tuning strategy | Block-level unfreezing from the end of the feature extractor |
+| Head | Replaces VGG's original three-layer classifier with `Dropout → Linear(num_classes)` |
+| Note | Larger memory footprint than EfficientNet/ResNet; smaller batch sizes recommended |
+
+---
+
+### YOLO Classification (`yolo_model.py`)
+
+| Detail | Value |
+|--------|-------|
+| Base | YOLOv8n-cls (`yolov8n-cls.pt`) via Ultralytics |
+| Task | End-to-end image classification (no detection step) |
+| Data prep | Images organised into `yolo_cls_data/train/<class>/` and `yolo_cls_data/test/<class>/` |
+| Training | Delegates to the Ultralytics `model.train()` API; accuracy history is parsed from Ultralytics CSV results |
+
+---
+
+### YOLO Detection + Classifier Pipeline (`yolo_detection_classifier.py`)
+
+A two-stage pipeline:
+
+1. **Detection** — `yolo26n.pt` runs on the full image/frame and returns bounding boxes for all birds found.
+2. **Classification** — each bird crop is passed to the best available base classifier (EfficientNet by default) for species identification.
+
+In **video mode** the detector scans every frame, selects the single highest-confidence bird box across all frames, and classifies that one crop.
+
+---
+
+### Training a Model from Scratch
+
+If you want to retrain, first put the dataset root path in `dataPath.txt`, then:
+
+```powershell
+# Build .pt tensor files
+python .\BirdTrain.py
+
+# Train EfficientNet (example hyper-parameters)
+python .\efficientnet_model.py train --unfreeze-layers 5 --epochs 15 --batch-size 128 --learning-rate 5e-3
+
+# Train ResNet
+python .\resnet_model.py train --unfreeze-layers 10 --epochs 10 --batch-size 32 --learning-rate 5e-4 --dropout .4 --weight-decay 1e-3
+
+# Train VGG
+python .\vgg_model.py train --unfreeze-layers 2 --epochs 10 --batch-size 2
+
+# Train YOLO classifier
+python .\yolo_model.py train --image-size 224 --epochs 10 --batch-size 8
+```
+
+Each run saves:
+- A `best_<model>_bird_classifier.pt` checkpoint (best validation accuracy)
+- A final-epoch `.pt` checkpoint
+- A `<model>_config.json` with all hyperparameters
+- A `<model>_error_vs_epochs.png` training/validation error curve
